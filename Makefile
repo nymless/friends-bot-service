@@ -1,30 +1,58 @@
-.PHONY: install prod-install run test type lint format clean
+.PHONY: help install install_prod run run_api deactivate_inactive_bots test type lint format check clean \
+		db-init db-migrate db-upgrade db-downgrade db-history
 
-install: ## Установить все зависимости (включая dev)
+help: ## Show available commands
+	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_-]+: ## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+install: ## Install all dependencies (including dev)
 	uv sync
 
-prod-install: ## Установить все зависимости (без dev)
+install_prod: ## Install production dependencies only
 	uv sync --no-dev
 
-run: ## Запустить бота
-	uv run python -m friends_bot.main
+run: ## Start the service using BOT_MODE
+	uv run python -m friends_bot_service.main
 
-test: ## Запустить тесты
+run_api: ## Start the FastAPI app directly
+	uv run python -m friends_bot_service.main_api
+
+deactivate_inactive_bots: ## Deactivate bots inactive for 60 days
+	uv run python -m friends_bot_service.scripts.deactivate_inactive_bots
+
+test: ## Run tests
 	uv run pytest
 
-type: ## Проверить типизацию через mypy
+check: ## Run test, format, lint, and type sequentially
+	$(MAKE) test && $(MAKE) format && $(MAKE) lint && $(MAKE) type
+
+type: ## Run mypy type checks
 	uv run mypy
 
-lint: ## Проверить код на ошибки и стиль через Ruff
+lint: ## Check code style and errors with Ruff
 	uv run ruff check
 
-format: ## Автоматически поправить стиль и импорты
+format: ## Format code and fix imports
 	uv run ruff format
 	uv run ruff check --fix
 
-clean: ## Удалить временные файлы, кэш и окружение
+clean: ## Remove cache files and virtual environment
 	rm -rf `find . -name __pycache__`
 	rm -rf .pytest_cache
 	rm -rf .mypy_cache
 	rm -rf .ruff_cache
 	rm -rf .venv
+
+db-init: ## Initialize Alembic in the project
+	alembic init migrations
+
+db-migrate: ## Create a new migration: `make db-migrate m="message"`
+	alembic revision --autogenerate -m "$(m)"
+
+db-upgrade: ## Apply all migrations up to the latest
+	alembic upgrade head
+
+db-downgrade: ## Roll back one migration
+	alembic downgrade -1
+
+db-history: ## Show migration history
+	alembic history --indicate-current

@@ -1,0 +1,919 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from aiogram.exceptions import TelegramUnauthorizedError
+
+from friends_bot_service.handlers.master.add_bot import handle_token, request_token
+from friends_bot_service.handlers.master.common import (
+    MasterStates,
+    build_set_default_commands_keyboard,
+    edit_callback_message,
+    get_bot_name,
+)
+from friends_bot_service.handlers.master.remove_bot import (
+    handle_remove_token,
+    request_remove_token,
+)
+from friends_bot_service.handlers.master.set_default_commands import (
+    set_default_commands,
+    set_default_commands_for_all_bots,
+    set_default_commands_for_selected_bot,
+)
+
+
+def build_message(*, user_id: int | None = 20) -> AsyncMock:
+    """Builds a minimal aiogram message mock for master handler tests."""
+
+    message = AsyncMock()
+    message.from_user = None if user_id is None else SimpleNamespace(id=user_id)
+    return message
+
+
+class FakeTempBot:
+    """Minimal async context manager used to fake Bot(token) in master tests."""
+
+    def __init__(self, *, bot_info=None, get_me_exception: Exception | None = None):
+        self._bot_info = bot_info
+        self._get_me_exception = get_me_exception
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return None
+
+    async def get_me(self):
+        if self._get_me_exception is not None:
+            raise self._get_me_exception
+        return self._bot_info
+
+
+def build_registered_bot(bot_id: int, username: str):
+    """Builds a lightweight registered bot object for tests."""
+
+    return SimpleNamespace(bot_id=bot_id, username=username)
+
+
+def build_callback(
+    *,
+    user_id: int | None = 20,
+    data: str | None = "callback-data",
+    with_message: bool = True,
+) -> AsyncMock:
+    """Builds a minimal aiogram callback query mock for master tests."""
+
+    callback = AsyncMock()
+    callback.from_user = None if user_id is None else SimpleNamespace(id=user_id)
+    callback.data = data
+    callback.message = AsyncMock() if with_message else None
+    return callback
+
+
+@pytest.mark.asyncio
+async def test_request_token_clears_state_and_answers():
+    """
+    Verify the initial /add_bot command flow.
+
+    Scenario:
+    - the /add_bot handler is called
+
+    Expected behavior:
+    - the FSM state is cleared
+    - the token prompt is sent to the user
+    """
+
+    # Prepare the message and FSM state mocks.
+    message = build_message()
+    state = AsyncMock()
+
+    # Run the handler.
+    await request_token(message, state, "upd-1")
+
+    # The handler must clear state and send the token prompt.
+    state.clear.assert_awaited_once()
+    message.answer.assert_awaited_once_with(
+        "Пришли мне токен бота, полученный от @BotFather."
+    )
+
+
+@pytest.mark.asyncio
+async def test_request_token_rejects_when_registration_is_disabled():
+    """
+    Verify the initial /add_bot flow when registration is disabled.
+
+    Scenario:
+    - the /add_bot handler is called
+    - global registration is turned off in settings
+
+    Expected behavior:
+    - the FSM state is still cleared
+    - the token prompt is not shown
+    - the user gets a temporary closure message instead
+    """
+
+    # Prepare the message and FSM state mocks.
+    message = build_message()
+    state = AsyncMock()
+
+    # Freeze the feature flag in the disabled state.
+    with patch(
+        "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+        False,
+    ):
+        await request_token(message, state, "upd-1")
+
+    # The handler must clear state and report that registrations are closed.
+    state.clear.assert_awaited_once()
+    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
+
+
+@pytest.mark.asyncio
+async def test_request_remove_token_sets_remove_state_and_answers():
+    """
+    Verify the initial /remove_bot command flow.
+
+    Scenario:
+    - the /remove_bot handler is called
+
+    Expected behavior:
+    - the FSM state is set to remove_token_state
+    - the token prompt is sent to the user
+    """
+
+    # Prepare the message and FSM state mocks.
+    message = build_message()
+    state = AsyncMock()
+
+    # Run the handler.
+    await request_remove_token(message, state, "upd-1")
+
+    # The handler must switch to remove flow state and send the prompt.
+    state.set_state.assert_awaited_once_with(MasterStates.remove_token_state)
+    message.answer.assert_awaited_once_with(
+        "Отправь токен бота от @BotFather, чтобы отключить его от сервиса."
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_token_rejects_invalid_token_and_deletes_message():
+    """
+    Verify add-bot token handling for an invalid token.
+
+    Scenario:
+    - handle_token receives a token-like message
+    - Bot.get_me raises TelegramUnauthorizedError
+
+    Expected behavior:
+    - the handler replies with the invalid-token message
+    - database and manager calls are skipped
+    - token cleanup helper is called in finally
+    """
+
+    # Prepare a token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = " 123:invalid "
+    manager = AsyncMock()
+    session = AsyncMock()
+
+    # Simulate BotFather token verification failure.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.add_bot.Bot",
+            return_value=FakeTempBot(
+                get_me_exception=TelegramUnauthorizedError(
+                    method=SimpleNamespace(__api_method__="getMe"),
+                    message="unauthorized",
+                )
+            ),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.bot_repo.upsert_bot",
+            new=AsyncMock(),
+        ) as upsert_bot,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_token(message, manager, session, "upd-1")
+
+    # The handler must answer with the validation failure and skip registration work.
+    message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
+    upsert_bot.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    manager.start_bot.assert_not_awaited()
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="add_bot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_token_rejects_when_registration_is_disabled():
+    """
+    Verify add-bot token handling when registration is disabled mid-flow.
+
+    Scenario:
+    - handle_token receives a token-like message
+    - global registration is turned off in settings
+
+    Expected behavior:
+    - the handler replies with the temporary closure message
+    - token verification and registration work are skipped
+    - token cleanup helper is still called in finally
+    """
+
+    # Prepare a token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = "123:valid-token"
+    manager = AsyncMock()
+    session = AsyncMock()
+
+    # Freeze the feature flag in the disabled state.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+            False,
+        ),
+        patch("friends_bot_service.handlers.master.add_bot.Bot") as bot_cls,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.bot_repo.upsert_bot",
+            new=AsyncMock(),
+        ) as upsert_bot,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_token(message, manager, session, "upd-1")
+
+    # The handler must reject the request before any registration side effects.
+    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
+    bot_cls.assert_not_called()
+    upsert_bot.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    manager.start_bot.assert_not_awaited()
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="add_bot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_token_registers_bot_and_reports_success():
+    """
+    Verify successful add-bot token handling.
+
+    Scenario:
+    - handle_token receives a valid token
+    - token verification succeeds
+    - bot registration and command sync succeed
+
+    Expected behavior:
+    - token is encrypted and saved
+    - manager starts the bot
+    - success message is sent
+    - token cleanup helper is called in finally
+    """
+
+    # Prepare a valid token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = " 123:valid-token "
+    manager = AsyncMock()
+    manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
+    session = AsyncMock()
+    bot_info = SimpleNamespace(id=999, username="new_bot")
+
+    # Simulate successful token verification, storage and command sync.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.add_bot.Bot",
+            return_value=FakeTempBot(bot_info=bot_info),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.encrypt_token",
+            return_value="encrypted-token",
+        ) as encrypt_token_mock,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.bot_repo.upsert_bot",
+            new=AsyncMock(),
+        ) as upsert_bot,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.sync_default_commands",
+            new=AsyncMock(return_value=True),
+        ) as sync_default_commands_mock,
+        patch(
+            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_token(message, manager, session, "upd-1")
+
+    # The handler must persist, start and acknowledge the newly connected bot.
+    encrypt_token_mock.assert_called_once_with("123:valid-token")
+    upsert_bot.assert_awaited_once_with(
+        session=session,
+        bot_id=999,
+        username="new_bot",
+        encrypted_token="encrypted-token",
+        owner_id=20,
+    )
+    session.commit.assert_awaited_once()
+    manager.start_bot.assert_awaited_once_with("123:valid-token")
+    sync_default_commands_mock.assert_awaited_once()
+    message.answer.assert_awaited_once_with("✅ Бот @new_bot успешно зарегистрирован!")
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="add_bot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_token_reports_command_sync_failure_after_registration():
+    """
+    Verify add-bot flow when registration succeeds but command sync fails.
+
+    Scenario:
+    - token verification succeeds
+    - bot is registered and started
+    - command sync returns False
+
+    Expected behavior:
+    - the handler still reports successful registration
+    - the answer also mentions deferred command sync
+    """
+
+    # Prepare a valid token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = "123:valid-token"
+    manager = AsyncMock()
+    manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
+    session = AsyncMock()
+    bot_info = SimpleNamespace(id=999, username="new_bot")
+
+    # Simulate successful registration but failed command sync.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.add_bot.Bot",
+            return_value=FakeTempBot(bot_info=bot_info),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.encrypt_token",
+            return_value="encrypted-token",
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.bot_repo.upsert_bot",
+            new=AsyncMock(),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.sync_default_commands",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ),
+    ):
+        await handle_token(message, manager, session, "upd-1")
+
+    # The final answer must keep registration success and mention command sync retry.
+    message.answer.assert_awaited_once_with(
+        "✅ Бот @new_bot успешно зарегистрирован!\n"
+        "Команды обновить не удалось. Попробуй /set_default_commands позже."
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_remove_token_rejects_invalid_token_and_clears_state():
+    """
+    Verify remove-bot token handling for an invalid token.
+
+    Scenario:
+    - handle_remove_token receives a token-like message
+    - Bot.get_me raises TelegramUnauthorizedError
+
+    Expected behavior:
+    - the handler clears FSM state
+    - invalid-token message is sent
+    - token cleanup helper is called in finally
+    """
+
+    # Prepare a token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = " 123:invalid "
+    manager = AsyncMock()
+    session = AsyncMock()
+    state = AsyncMock()
+
+    # Simulate BotFather token verification failure.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.Bot",
+            return_value=FakeTempBot(
+                get_me_exception=TelegramUnauthorizedError(
+                    method=SimpleNamespace(__api_method__="getMe"),
+                    message="unauthorized",
+                )
+            ),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_remove_token(message, manager, session, state, "upd-1")
+
+    # The handler must clear state, reply with invalid-token text and clean the message.
+    state.clear.assert_awaited_once()
+    message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
+    manager.stop_bot.assert_not_awaited()
+    session.commit.assert_not_awaited()
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="remove_bot",
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_remove_token_rolls_back_when_bot_is_not_deactivated():
+    """
+    Verify remove-bot flow when the bot cannot be deactivated for this owner.
+
+    Scenario:
+    - token verification succeeds
+    - deactivate_bot_for_owner returns False
+
+    Expected behavior:
+    - the session is rolled back
+    - FSM state is cleared
+    - failure message is sent
+    """
+
+    # Prepare a valid token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = "123:valid-token"
+    manager = AsyncMock()
+    session = AsyncMock()
+    state = AsyncMock()
+    bot_info = SimpleNamespace(id=999, username="owned_bot")
+
+    # Simulate successful token verification but failed ownership-based deactivation.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.Bot",
+            return_value=FakeTempBot(bot_info=bot_info),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.bot_repo.deactivate_bot_for_owner",
+            new=AsyncMock(return_value=False),
+        ) as deactivate_bot_for_owner,
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ),
+    ):
+        await handle_remove_token(message, manager, session, state, "upd-1")
+
+    # The handler must roll back and explain why bot removal was denied.
+    deactivate_bot_for_owner.assert_awaited_once_with(
+        session=session,
+        bot_id=999,
+        owner_id=20,
+    )
+    session.rollback.assert_awaited_once()
+    state.clear.assert_awaited_once()
+    manager.stop_bot.assert_not_awaited()
+    message.answer.assert_awaited_once_with(
+        "Не получилось отключить бота. Проверьте токен и что он был "
+        "подключён с этого Telegram-аккаунта."
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_remove_token_deactivates_bot_and_stops_manager():
+    """
+    Verify successful remove-bot token handling.
+
+    Scenario:
+    - token verification succeeds
+    - bot deactivation succeeds
+
+    Expected behavior:
+    - the session is committed
+    - manager.stop_bot is called
+    - FSM state is cleared
+    - success message is sent
+    - token cleanup helper is called in finally
+    """
+
+    # Prepare a valid token message and mocked dependencies.
+    message = build_message(user_id=20)
+    message.text = "123:valid-token"
+    manager = AsyncMock()
+    session = AsyncMock()
+    state = AsyncMock()
+    bot_info = SimpleNamespace(id=999, username="owned_bot")
+
+    # Simulate successful verification and deactivation.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.Bot",
+            return_value=FakeTempBot(bot_info=bot_info),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.bot_repo.deactivate_bot_for_owner",
+            new=AsyncMock(return_value=True),
+        ) as deactivate_bot_for_owner,
+        patch(
+            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_remove_token(message, manager, session, state, "upd-1")
+
+    # The handler must commit, stop the bot and send the success message.
+    deactivate_bot_for_owner.assert_awaited_once_with(
+        session=session,
+        bot_id=999,
+        owner_id=20,
+    )
+    session.commit.assert_awaited_once()
+    manager.stop_bot.assert_awaited_once_with(999)
+    state.clear.assert_awaited_once()
+    message.answer.assert_awaited_once_with("Бот @owned_bot отключён от сервиса.")
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="remove_bot",
+    )
+
+
+def test_get_bot_name_formats_username():
+    """
+    Verify formatting of bot display names.
+
+    Scenario:
+    - a registered bot object has a username
+
+    Expected behavior:
+    - the helper returns @username format
+    """
+
+    # Prepare a registered bot object.
+    registered_bot = build_registered_bot(1, "test_bot")
+
+    # The helper must prefix the username with @.
+    assert get_bot_name(registered_bot) == "@test_bot"
+
+
+def test_build_set_default_commands_keyboard_contains_bot_and_bulk_buttons():
+    """
+    Verify keyboard construction for multiple bot command sync.
+
+    Scenario:
+    - two registered bots are available for selection
+
+    Expected behavior:
+    - the keyboard contains one button per bot
+    - the keyboard also contains the bulk update button
+    """
+
+    # Prepare two selectable bots.
+    db_bots = [
+        build_registered_bot(1, "first_bot"),
+        build_registered_bot(2, "second_bot"),
+    ]
+
+    # Build the selection keyboard.
+    keyboard = build_set_default_commands_keyboard(db_bots)
+    button_texts = [button.text for row in keyboard.inline_keyboard for button in row]
+
+    # The keyboard must contain both bot buttons and the bulk-update button.
+    assert "@first_bot" in button_texts
+    assert "@second_bot" in button_texts
+    assert "Обновить у всех" in button_texts
+
+
+@pytest.mark.asyncio
+async def test_edit_callback_message_updates_message_when_present():
+    """
+    Verify callback message editing helper when callback.message exists.
+
+    Scenario:
+    - callback query contains an attached message
+
+    Expected behavior:
+    - the helper edits that message text
+    """
+
+    # Prepare a callback query with an editable message.
+    callback = build_callback(with_message=True)
+
+    # Run the helper.
+    await edit_callback_message(callback, "Updated text")
+
+    # The helper must edit the callback message.
+    callback.message.edit_text.assert_awaited_once_with("Updated text")
+
+
+@pytest.mark.asyncio
+async def test_edit_callback_message_ignores_missing_message():
+    """
+    Verify callback message editing helper when callback.message is missing.
+
+    Scenario:
+    - callback query has no attached message
+
+    Expected behavior:
+    - the helper exits without raising
+    """
+
+    # Prepare a callback query without a message object.
+    callback = build_callback(with_message=False)
+
+    # The helper must quietly do nothing.
+    await edit_callback_message(callback, "Updated text")
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_returns_early_when_user_is_missing():
+    """
+    Verify /set_default_commands early-exit branch when from_user is missing.
+
+    Scenario:
+    - the command handler is called
+    - the incoming message has no from_user
+
+    Expected behavior:
+    - repository lookup is not called
+    - no response message is sent
+    """
+
+    # Prepare a message without Telegram user data.
+    message = build_message(user_id=None)
+    session = AsyncMock()
+
+    # Guard against any unintended repository lookup.
+    with patch(
+        "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bots_for_owner",
+        new=AsyncMock(),
+    ) as get_active_bots_for_owner:
+        await set_default_commands(message, session, "upd-1")
+
+    # The handler must stop without further work.
+    get_active_bots_for_owner.assert_not_awaited()
+    message.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_reports_when_owner_has_no_bots():
+    """
+    Verify /set_default_commands behavior when the owner has no connected bots.
+
+    Scenario:
+    - repository returns an empty bot list for the owner
+
+    Expected behavior:
+    - the handler answers with the no-bots message
+    """
+
+    # Prepare a normal command request.
+    message = build_message(user_id=20)
+    session = AsyncMock()
+
+    # Simulate an owner with no connected bots.
+    with patch(
+        "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bots_for_owner",
+        new=AsyncMock(return_value=[]),
+    ):
+        await set_default_commands(message, session, "upd-1")
+
+    # The handler must answer with the no-bots text.
+    message.answer.assert_awaited_once_with(
+        "У тебя пока нет подключённых ботов для обновления команд."
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_updates_single_bot_immediately():
+    """
+    Verify /set_default_commands single-bot flow.
+
+    Scenario:
+    - repository returns exactly one active bot
+    - command sync succeeds
+
+    Expected behavior:
+    - sync is executed immediately
+    - success message for that bot is sent
+    """
+
+    # Prepare a normal command request with one connected bot.
+    message = build_message(user_id=20)
+    session = AsyncMock()
+    registered_bot = build_registered_bot(1, "single_bot")
+
+    # Simulate a successful single-bot sync.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bots_for_owner",
+            new=AsyncMock(return_value=[registered_bot]),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
+            new=AsyncMock(return_value=True),
+        ) as sync_commands_for_bot,
+    ):
+        await set_default_commands(message, session, "upd-1")
+
+    # The handler must sync immediately and answer with the success text.
+    sync_commands_for_bot.assert_awaited_once_with(registered_bot)
+    message.answer.assert_awaited_once_with("Команды для @single_bot обновлены.")
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_shows_keyboard_for_multiple_bots():
+    """
+    Verify /set_default_commands multi-bot selection flow.
+
+    Scenario:
+    - repository returns multiple active bots for the owner
+
+    Expected behavior:
+    - the handler sends a selection message
+    - inline keyboard is attached
+    """
+
+    # Prepare a normal command request with multiple connected bots.
+    message = build_message(user_id=20)
+    session = AsyncMock()
+    db_bots = [
+        build_registered_bot(1, "first_bot"),
+        build_registered_bot(2, "second_bot"),
+    ]
+
+    # Simulate multiple selectable bots.
+    with patch(
+        "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bots_for_owner",
+        new=AsyncMock(return_value=db_bots),
+    ):
+        await set_default_commands(message, session, "upd-1")
+
+    # The handler must send the selection prompt with an inline keyboard.
+    assert message.answer.await_count == 1
+    assert (
+        message.answer.await_args.args[0]
+        == "Выбери бота, для которого нужно обновить команды, или обнови их у всех."
+    )
+    assert message.answer.await_args.kwargs["reply_markup"] is not None
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_for_selected_bot_rejects_invalid_callback_data():
+    """
+    Verify selected-bot callback handling for malformed callback data.
+
+    Scenario:
+    - callback data cannot be parsed into bot_id
+
+    Expected behavior:
+    - the handler answers with an alert about invalid bot selection
+    """
+
+    # Prepare a callback with malformed bot id.
+    callback = build_callback(
+        user_id=20,
+        data="set_default_commands:bot:not-an-int",
+    )
+    session = AsyncMock()
+
+    # Run the callback handler.
+    await set_default_commands_for_selected_bot(callback, session, "upd-1")
+
+    # The handler must answer with the invalid-bot alert.
+    callback.answer.assert_awaited_once_with("Некорректный бот.", show_alert=True)
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_for_selected_bot_rejects_unavailable_bot():
+    """
+    Verify selected-bot callback handling for inaccessible bots.
+
+    Scenario:
+    - callback data is valid
+    - repository returns no active bot for this owner and bot_id
+
+    Expected behavior:
+    - the handler answers with an access-denied alert
+    """
+
+    # Prepare a callback pointing to an inaccessible bot.
+    callback = build_callback(user_id=20, data="set_default_commands:bot:1")
+    session = AsyncMock()
+
+    # Simulate missing bot ownership or inactive bot.
+    with patch(
+        "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bot_for_owner",
+        new=AsyncMock(return_value=None),
+    ):
+        await set_default_commands_for_selected_bot(callback, session, "upd-1")
+
+    # The handler must answer with the unavailable-bot alert.
+    callback.answer.assert_awaited_once_with(
+        "Этот бот недоступен для управления.", show_alert=True
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_for_selected_bot_edits_success_message():
+    """
+    Verify selected-bot callback success flow.
+
+    Scenario:
+    - repository returns the selected active bot
+    - command sync succeeds
+
+    Expected behavior:
+    - callback is acknowledged
+    - result message is edited to the success text
+    """
+
+    # Prepare a callback pointing to a valid bot.
+    callback = build_callback(user_id=20, data="set_default_commands:bot:1")
+    session = AsyncMock()
+    registered_bot = build_registered_bot(1, "selected_bot")
+
+    # Simulate successful selected-bot sync.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bot_for_owner",
+            new=AsyncMock(return_value=registered_bot),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.edit_callback_message",
+            new=AsyncMock(),
+        ) as edit_callback_message_mock,
+    ):
+        await set_default_commands_for_selected_bot(callback, session, "upd-1")
+
+    # The handler must acknowledge the callback and
+    # replace the message with success text.
+    callback.answer.assert_awaited_once_with()
+    edit_callback_message_mock.assert_awaited_once_with(
+        callback,
+        "Команды для @selected_bot обновлены.",
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_default_commands_for_all_bots_reports_partial_failures():
+    """
+    Verify bulk callback flow when some bot command syncs fail.
+
+    Scenario:
+    - repository returns multiple active bots
+    - one sync succeeds and one sync fails
+
+    Expected behavior:
+    - callback is acknowledged
+    - result message is edited with the failed bot list
+    """
+
+    # Prepare a bulk callback with two connected bots.
+    callback = build_callback(user_id=20, data="set_default_commands:all")
+    session = AsyncMock()
+    first_bot = build_registered_bot(1, "first_bot")
+    second_bot = build_registered_bot(2, "second_bot")
+
+    # Simulate one successful sync and one failed sync.
+    with (
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.bot_repo.get_active_bots_for_owner",
+            new=AsyncMock(return_value=[first_bot, second_bot]),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
+            new=AsyncMock(side_effect=[True, False]),
+        ),
+        patch(
+            "friends_bot_service.handlers.master.set_default_commands.edit_callback_message",
+            new=AsyncMock(),
+        ) as edit_callback_message_mock,
+    ):
+        await set_default_commands_for_all_bots(callback, session, "upd-1")
+
+    # The handler must acknowledge the callback and show the failed bot list.
+    callback.answer.assert_awaited_once_with()
+    edit_callback_message_mock.assert_awaited_once_with(
+        callback,
+        "Не удалось обновить команды для:\n- @second_bot",
+    )

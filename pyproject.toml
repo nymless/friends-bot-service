@@ -6,12 +6,18 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.27.0",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "cryptography>=48.0.0",
     "fastapi[standard]>=0.136.1",
+    "pydantic-settings>=2.14.0",
     "python-dotenv>=1.2.2",
+    "sqlalchemy[asyncio]>=2.0.49",
 ]
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.22.1",
     "mypy>=1.20.2",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
@@ -20,6 +26,7 @@ dev = [
 
 [tool.mypy]
 python_version = "3.12"
+plugins = ["pydantic.mypy"]
 files = ["friends_bot_service"]
 ignore_missing_imports = true
 check_untyped_defs = true

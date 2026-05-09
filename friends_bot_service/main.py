@@ -1,20 +1,36 @@
 import asyncio
+import logging
+import sys
 
-from aiogram import Bot, Dispatcher
+import uvicorn
 
-from friends_bot_service.config import BOT_TOKEN, DB_PATH
-from friends_bot_service.database import DBHandler
-from friends_bot_service.handlers import router
+from friends_bot_service.bootstrap.runtime import (
+    create_webhook_app,
+    run_polling,
+    setup_logging,
+)
+from friends_bot_service.core.config import settings
+from friends_bot_service.enums.enums import BotMode
+
+logger = logging.getLogger(__name__)
 
 
-async def main():
-    bot = Bot(token=BOT_TOKEN)
-    dispatcher = Dispatcher()
-    dispatcher.include_router(router)
-    db_handler = DBHandler(DB_PATH)
+def run() -> None:
+    """Runs the service using the mode from settings."""
 
-    await dispatcher.start_polling(bot, db=db_handler)
+    setup_logging()
+
+    if settings.BOT_MODE == BotMode.POLLING:
+        asyncio.run(run_polling())
+        return
+
+    if settings.BOT_MODE == BotMode.WEBHOOK:
+        uvicorn.run(create_webhook_app(), host="0.0.0.0", port=8000)
+        return
+
+    logger.critical("unsupported mode %s", settings.BOT_MODE)
+    sys.exit(1)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    run()
