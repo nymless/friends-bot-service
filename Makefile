@@ -43,16 +43,16 @@ clean: ## Remove cache files and virtual environment
 	rm -rf .venv
 
 db-init: ## Initialize Alembic in the project
-	alembic init migrations
+	uv run alembic init migrations
 
 db-migrate: ## Create a new migration: `make db-migrate m="message"`
-	alembic revision --autogenerate -m "$(m)"
+	uv run alembic revision --autogenerate -m "$(m)"
 
 db-upgrade: ## Apply all migrations up to the latest
-	alembic upgrade head
+	uv run alembic upgrade head
 
 db-downgrade: ## Roll back one migration
-	alembic downgrade -1
+	uv run alembic downgrade -1
 
 db-history: ## Show migration history
-	alembic history --indicate-current
+	uv run alembic history --indicate-current
