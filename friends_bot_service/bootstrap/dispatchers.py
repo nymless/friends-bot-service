@@ -29,7 +29,7 @@ def get_bot_dispatcher() -> Dispatcher:
 def get_master_bot_dispatcher() -> Dispatcher:
     """Creates the dispatcher used by the master bot."""
 
-    master_dp = Dispatcher(storage=MemoryStorage())
+    master_dp = Dispatcher()
     master_dp.message.filter(F.chat.type == ChatType.PRIVATE, F.from_user)
     master_dp.update.middleware(LoggingMiddleware())
     master_dp.update.middleware(DbSessionMiddleware(session_factory))

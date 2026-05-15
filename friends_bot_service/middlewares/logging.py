@@ -6,12 +6,28 @@ from aiogram.types.user import User
 logger = logging.getLogger(__name__)
 
 
+def redact_message_text_for_log(text: str) -> str:
+    """
+    Never log secrets after master bot commands.
+
+    If the message starts with ``/add_bot`` or ``/remove_bot``, only the command
+    name is logged (covers ``/cmd``, ``/cmd@bot``, ``/cmd token``, end of string).
+    """
+
+    if text.startswith("/remove_bot"):
+        return "/remove_bot"
+    if text.startswith("/add_bot"):
+        return "/add_bot"
+    return text
+
+
 class LoggingMiddleware(BaseMiddleware):
     """
     Middleware for logging incoming events.
 
     - Injects update_id into the handler context for logging.
     - Logs all incoming events, including those ignored by handlers.
+    - Does not log arguments of ``/add_bot`` or ``/remove_bot`` (master bot tokens).
     """
 
     async def __call__(self, handler, event, data):
@@ -32,8 +48,8 @@ class LoggingMiddleware(BaseMiddleware):
         )
 
         message_text = "N/A"
-        if event.message and event.message.text:
-            message_text = event.message.text
+        if event.message and event.message.text is not None:
+            message_text = redact_message_text_for_log(event.message.text)
 
         logger.info(
             f"Received [upd={update_id}] [bot={bot_id}] [chat={chat_id}] "

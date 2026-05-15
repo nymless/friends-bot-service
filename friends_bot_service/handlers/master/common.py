@@ -1,7 +1,6 @@
 import logging
 
 from aiogram import Bot, Router, types
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import BotCommandScopeAllGroupChats
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
@@ -15,12 +14,6 @@ router = Router()
 
 SET_DEFAULT_COMMANDS_ALL_CALLBACK = "set_default_commands:all"
 SET_DEFAULT_COMMANDS_BOT_PREFIX = "set_default_commands:bot:"
-
-
-class MasterStates(StatesGroup):
-    """States used by the master bot flows."""
-
-    remove_token_state = State()
 
 
 async def try_delete_token_message(

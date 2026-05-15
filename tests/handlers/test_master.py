@@ -4,22 +4,24 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from aiogram.exceptions import TelegramUnauthorizedError
 
-from friends_bot_service.handlers.master.add_bot import handle_token, request_token
+from friends_bot_service.handlers.master.add_bot import handle_add_bot
 from friends_bot_service.handlers.master.common import (
-    MasterStates,
     build_set_default_commands_keyboard,
     edit_callback_message,
     get_bot_name,
 )
-from friends_bot_service.handlers.master.remove_bot import (
-    handle_remove_token,
-    request_remove_token,
-)
+from friends_bot_service.handlers.master.remove_bot import handle_remove_bot
 from friends_bot_service.handlers.master.set_default_commands import (
     set_default_commands,
     set_default_commands_for_all_bots,
     set_default_commands_for_selected_bot,
 )
+
+
+def build_command_args(args: str | None) -> SimpleNamespace:
+    """Minimal CommandObject stand-in for handler tests."""
+
+    return SimpleNamespace(args=args)
 
 
 def build_message(*, user_id: int | None = 20) -> AsyncMock:
@@ -71,97 +73,97 @@ def build_callback(
 
 
 @pytest.mark.asyncio
-async def test_request_token_clears_state_and_answers():
-    """
-    Verify the initial /add_bot command flow.
+async def test_add_bot_shows_usage_when_token_missing():
+    """When /add_bot is sent without a token, the handler explains the syntax."""
 
-    Scenario:
-    - the /add_bot handler is called
-
-    Expected behavior:
-    - the FSM state is cleared
-    - the token prompt is sent to the user
-    """
-
-    # Prepare the message and FSM state mocks.
     message = build_message()
-    state = AsyncMock()
+    manager = AsyncMock()
+    session = AsyncMock()
+    command = build_command_args(None)
 
-    # Run the handler.
-    await request_token(message, state, "upd-1")
+    await handle_add_bot(message, command, manager, session, "upd-1")
 
-    # The handler must clear state and send the token prompt.
-    state.clear.assert_awaited_once()
     message.answer.assert_awaited_once_with(
-        "Пришли мне токен бота, полученный от @BotFather."
+        "Укажи токен в одной команде: `/add_bot <токен>` — токен из @BotFather."
     )
 
 
 @pytest.mark.asyncio
-async def test_request_token_rejects_when_registration_is_disabled():
+async def test_add_bot_rejects_when_registration_is_disabled_without_token():
     """
-    Verify the initial /add_bot flow when registration is disabled.
-
-    Scenario:
-    - the /add_bot handler is called
-    - global registration is turned off in settings
-
-    Expected behavior:
-    - the FSM state is still cleared
-    - the token prompt is not shown
-    - the user gets a temporary closure message instead
+    When registration is disabled and the command has no token,
+    the handler only reports closure (no delete).
     """
 
-    # Prepare the message and FSM state mocks.
     message = build_message()
-    state = AsyncMock()
+    manager = AsyncMock()
+    session = AsyncMock()
+    command = build_command_args(None)
 
-    # Freeze the feature flag in the disabled state.
     with patch(
         "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
         False,
     ):
-        await request_token(message, state, "upd-1")
+        await handle_add_bot(message, command, manager, session, "upd-1")
 
-    # The handler must clear state and report that registrations are closed.
-    state.clear.assert_awaited_once()
     message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
 
 
 @pytest.mark.asyncio
-async def test_request_remove_token_sets_remove_state_and_answers():
+async def test_add_bot_rejects_when_registration_disabled_deletes_token_message():
     """
-    Verify the initial /remove_bot command flow.
-
-    Scenario:
-    - the /remove_bot handler is called
-
-    Expected behavior:
-    - the FSM state is set to remove_token_state
-    - the token prompt is sent to the user
+    When registration is disabled but a token was sent in the same message,
+    the handler reports closure and removes the message from the chat.
     """
 
-    # Prepare the message and FSM state mocks.
     message = build_message()
-    state = AsyncMock()
+    manager = AsyncMock()
+    session = AsyncMock()
+    command = build_command_args("123:secret")
 
-    # Run the handler.
-    await request_remove_token(message, state, "upd-1")
+    with (
+        patch(
+            "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+            False,
+        ),
+        patch(
+            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            new=AsyncMock(),
+        ) as try_delete_token_message_mock,
+    ):
+        await handle_add_bot(message, command, manager, session, "upd-1")
 
-    # The handler must switch to remove flow state and send the prompt.
-    state.set_state.assert_awaited_once_with(MasterStates.remove_token_state)
-    message.answer.assert_awaited_once_with(
-        "Отправь токен бота от @BotFather, чтобы отключить его от сервиса."
+    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
+    try_delete_token_message_mock.assert_awaited_once_with(
+        message,
+        update_id="upd-1",
+        flow="add_bot",
     )
 
 
 @pytest.mark.asyncio
-async def test_handle_token_rejects_invalid_token_and_deletes_message():
+async def test_remove_bot_shows_usage_when_token_missing():
+    """When /remove_bot is sent without a token, the handler explains the syntax."""
+
+    message = build_message()
+    manager = AsyncMock()
+    session = AsyncMock()
+    command = build_command_args(None)
+
+    await handle_remove_bot(message, command, manager, session, "upd-1")
+
+    message.answer.assert_awaited_once_with(
+        "Укажи токен в одной команде: `/remove_bot <токен>` — токен из @BotFather."
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_add_bot_rejects_invalid_token_and_deletes_message():
     """
-    Verify add-bot token handling for an invalid token.
+    Verify add-bot handling for an invalid token.
 
     Scenario:
-    - handle_token receives a token-like message
+    - /add_bot is called with a token
     - Bot.get_me raises TelegramUnauthorizedError
 
     Expected behavior:
@@ -170,13 +172,11 @@ async def test_handle_token_rejects_invalid_token_and_deletes_message():
     - token cleanup helper is called in finally
     """
 
-    # Prepare a token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = " 123:invalid "
+    command = build_command_args(" 123:invalid ")
     manager = AsyncMock()
     session = AsyncMock()
 
-    # Simulate BotFather token verification failure.
     with (
         patch(
             "friends_bot_service.handlers.master.add_bot.Bot",
@@ -196,9 +196,8 @@ async def test_handle_token_rejects_invalid_token_and_deletes_message():
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_token(message, manager, session, "upd-1")
+        await handle_add_bot(message, command, manager, session, "upd-1")
 
-    # The handler must answer with the validation failure and skip registration work.
     message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
     upsert_bot.assert_not_awaited()
     session.commit.assert_not_awaited()
@@ -211,64 +210,12 @@ async def test_handle_token_rejects_invalid_token_and_deletes_message():
 
 
 @pytest.mark.asyncio
-async def test_handle_token_rejects_when_registration_is_disabled():
-    """
-    Verify add-bot token handling when registration is disabled mid-flow.
-
-    Scenario:
-    - handle_token receives a token-like message
-    - global registration is turned off in settings
-
-    Expected behavior:
-    - the handler replies with the temporary closure message
-    - token verification and registration work are skipped
-    - token cleanup helper is still called in finally
-    """
-
-    # Prepare a token message and mocked dependencies.
-    message = build_message(user_id=20)
-    message.text = "123:valid-token"
-    manager = AsyncMock()
-    session = AsyncMock()
-
-    # Freeze the feature flag in the disabled state.
-    with (
-        patch(
-            "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
-            False,
-        ),
-        patch("friends_bot_service.handlers.master.add_bot.Bot") as bot_cls,
-        patch(
-            "friends_bot_service.handlers.master.add_bot.bot_repo.upsert_bot",
-            new=AsyncMock(),
-        ) as upsert_bot,
-        patch(
-            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
-            new=AsyncMock(),
-        ) as try_delete_token_message_mock,
-    ):
-        await handle_token(message, manager, session, "upd-1")
-
-    # The handler must reject the request before any registration side effects.
-    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
-    bot_cls.assert_not_called()
-    upsert_bot.assert_not_awaited()
-    session.commit.assert_not_awaited()
-    manager.start_bot.assert_not_awaited()
-    try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="add_bot",
-    )
-
-
-@pytest.mark.asyncio
-async def test_handle_token_registers_bot_and_reports_success():
+async def test_handle_add_bot_registers_bot_and_reports_success():
     """
     Verify successful add-bot token handling.
 
     Scenario:
-    - handle_token receives a valid token
+    - /add_bot is called with a valid token
     - token verification succeeds
     - bot registration and command sync succeed
 
@@ -279,15 +226,13 @@ async def test_handle_token_registers_bot_and_reports_success():
     - token cleanup helper is called in finally
     """
 
-    # Prepare a valid token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = " 123:valid-token "
+    command = build_command_args(" 123:valid-token ")
     manager = AsyncMock()
     manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
     session = AsyncMock()
     bot_info = SimpleNamespace(id=999, username="new_bot")
 
-    # Simulate successful token verification, storage and command sync.
     with (
         patch(
             "friends_bot_service.handlers.master.add_bot.Bot",
@@ -310,7 +255,7 @@ async def test_handle_token_registers_bot_and_reports_success():
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_token(message, manager, session, "upd-1")
+        await handle_add_bot(message, command, manager, session, "upd-1")
 
     # The handler must persist, start and acknowledge the newly connected bot.
     encrypt_token_mock.assert_called_once_with("123:valid-token")
@@ -333,7 +278,7 @@ async def test_handle_token_registers_bot_and_reports_success():
 
 
 @pytest.mark.asyncio
-async def test_handle_token_reports_command_sync_failure_after_registration():
+async def test_handle_add_bot_reports_command_sync_failure_after_registration():
     """
     Verify add-bot flow when registration succeeds but command sync fails.
 
@@ -347,15 +292,13 @@ async def test_handle_token_reports_command_sync_failure_after_registration():
     - the answer also mentions deferred command sync
     """
 
-    # Prepare a valid token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = "123:valid-token"
+    command = build_command_args("123:valid-token")
     manager = AsyncMock()
     manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
     session = AsyncMock()
     bot_info = SimpleNamespace(id=999, username="new_bot")
 
-    # Simulate successful registration but failed command sync.
     with (
         patch(
             "friends_bot_service.handlers.master.add_bot.Bot",
@@ -378,7 +321,7 @@ async def test_handle_token_reports_command_sync_failure_after_registration():
             new=AsyncMock(),
         ),
     ):
-        await handle_token(message, manager, session, "upd-1")
+        await handle_add_bot(message, command, manager, session, "upd-1")
 
     # The final answer must keep registration success and mention command sync retry.
     message.answer.assert_awaited_once_with(
@@ -388,28 +331,24 @@ async def test_handle_token_reports_command_sync_failure_after_registration():
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_token_rejects_invalid_token_and_clears_state():
+async def test_handle_remove_bot_rejects_invalid_token_and_deletes_message():
     """
-    Verify remove-bot token handling for an invalid token.
+    Verify remove-bot handling for an invalid token.
 
     Scenario:
-    - handle_remove_token receives a token-like message
+    - /remove_bot is called with a token
     - Bot.get_me raises TelegramUnauthorizedError
 
     Expected behavior:
-    - the handler clears FSM state
     - invalid-token message is sent
     - token cleanup helper is called in finally
     """
 
-    # Prepare a token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = " 123:invalid "
+    command = build_command_args(" 123:invalid ")
     manager = AsyncMock()
     session = AsyncMock()
-    state = AsyncMock()
 
-    # Simulate BotFather token verification failure.
     with (
         patch(
             "friends_bot_service.handlers.master.remove_bot.Bot",
@@ -425,10 +364,8 @@ async def test_handle_remove_token_rejects_invalid_token_and_clears_state():
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_remove_token(message, manager, session, state, "upd-1")
+        await handle_remove_bot(message, command, manager, session, "upd-1")
 
-    # The handler must clear state, reply with invalid-token text and clean the message.
-    state.clear.assert_awaited_once()
     message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
     manager.stop_bot.assert_not_awaited()
     session.commit.assert_not_awaited()
@@ -440,7 +377,7 @@ async def test_handle_remove_token_rejects_invalid_token_and_clears_state():
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_token_rolls_back_when_bot_is_not_deactivated():
+async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
     """
     Verify remove-bot flow when the bot cannot be deactivated for this owner.
 
@@ -450,19 +387,15 @@ async def test_handle_remove_token_rolls_back_when_bot_is_not_deactivated():
 
     Expected behavior:
     - the session is rolled back
-    - FSM state is cleared
     - failure message is sent
     """
 
-    # Prepare a valid token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = "123:valid-token"
+    command = build_command_args("123:valid-token")
     manager = AsyncMock()
     session = AsyncMock()
-    state = AsyncMock()
     bot_info = SimpleNamespace(id=999, username="owned_bot")
 
-    # Simulate successful token verification but failed ownership-based deactivation.
     with (
         patch(
             "friends_bot_service.handlers.master.remove_bot.Bot",
@@ -477,16 +410,14 @@ async def test_handle_remove_token_rolls_back_when_bot_is_not_deactivated():
             new=AsyncMock(),
         ),
     ):
-        await handle_remove_token(message, manager, session, state, "upd-1")
+        await handle_remove_bot(message, command, manager, session, "upd-1")
 
-    # The handler must roll back and explain why bot removal was denied.
     deactivate_bot_for_owner.assert_awaited_once_with(
         session=session,
         bot_id=999,
         owner_id=20,
     )
     session.rollback.assert_awaited_once()
-    state.clear.assert_awaited_once()
     manager.stop_bot.assert_not_awaited()
     message.answer.assert_awaited_once_with(
         "Не получилось отключить бота. Проверьте токен и что он был "
@@ -495,9 +426,9 @@ async def test_handle_remove_token_rolls_back_when_bot_is_not_deactivated():
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_token_deactivates_bot_and_stops_manager():
+async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
     """
-    Verify successful remove-bot token handling.
+    Verify successful remove-bot handling.
 
     Scenario:
     - token verification succeeds
@@ -506,20 +437,16 @@ async def test_handle_remove_token_deactivates_bot_and_stops_manager():
     Expected behavior:
     - the session is committed
     - manager.stop_bot is called
-    - FSM state is cleared
     - success message is sent
     - token cleanup helper is called in finally
     """
 
-    # Prepare a valid token message and mocked dependencies.
     message = build_message(user_id=20)
-    message.text = "123:valid-token"
+    command = build_command_args("123:valid-token")
     manager = AsyncMock()
     session = AsyncMock()
-    state = AsyncMock()
     bot_info = SimpleNamespace(id=999, username="owned_bot")
 
-    # Simulate successful verification and deactivation.
     with (
         patch(
             "friends_bot_service.handlers.master.remove_bot.Bot",
@@ -534,9 +461,8 @@ async def test_handle_remove_token_deactivates_bot_and_stops_manager():
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_remove_token(message, manager, session, state, "upd-1")
+        await handle_remove_bot(message, command, manager, session, "upd-1")
 
-    # The handler must commit, stop the bot and send the success message.
     deactivate_bot_for_owner.assert_awaited_once_with(
         session=session,
         bot_id=999,
@@ -544,7 +470,6 @@ async def test_handle_remove_token_deactivates_bot_and_stops_manager():
     )
     session.commit.assert_awaited_once()
     manager.stop_bot.assert_awaited_once_with(999)
-    state.clear.assert_awaited_once()
     message.answer.assert_awaited_once_with("Бот @owned_bot отключён от сервиса.")
     try_delete_token_message_mock.assert_awaited_once_with(
         message,

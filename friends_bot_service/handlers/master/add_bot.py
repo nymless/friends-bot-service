@@ -1,7 +1,6 @@
-from aiogram import Bot, F, types
+from aiogram import Bot, types
 from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command, CommandObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from friends_bot_service.bot_manager.base import BotManager
@@ -9,19 +8,18 @@ from friends_bot_service.core.config import settings
 from friends_bot_service.core.security import encrypt_token
 from friends_bot_service.repositories import bot_repo
 
-from .common import (
-    MasterStates,
-    logger,
-    router,
-    sync_default_commands,
-    try_delete_token_message,
-)
+from .common import logger, router, sync_default_commands, try_delete_token_message
 
 
 @router.message(Command("add_bot"))
-async def request_token(message: types.Message, state: FSMContext, update_id: str):
-    """Requests a token to add a bot to the service."""
-    await state.clear()
+async def handle_add_bot(
+    message: types.Message,
+    command: CommandObject,
+    manager: BotManager,
+    session: AsyncSession,
+    update_id: str,
+):
+    """Registers a bot: /add_bot <token from @BotFather>."""
 
     if not settings.REGISTRATION_ENABLED:
         logger.info(
@@ -29,44 +27,25 @@ async def request_token(message: types.Message, state: FSMContext, update_id: st
             "[details=registration_disabled]"
         )
         await message.answer("Регистрация ботов временно закрыта.")
+        if (command.args or "").strip():
+            await try_delete_token_message(message, update_id=update_id, flow="add_bot")
         return
 
-    logger.info(f"Handler [upd={update_id}] [command=add_bot] [details=token_request]")
+    raw = (command.args or "").strip()
+    if not raw:
+        await message.answer(
+            "Укажи токен в одной команде: `/add_bot <токен>` — токен из @BotFather."
+        )
+        return
 
-    await message.answer("Пришли мне токен бота, полученный от @BotFather.")
+    token = raw
 
-
-@router.message(~StateFilter(MasterStates.remove_token_state), F.text.contains(":"))
-async def handle_token(
-    message: types.Message,
-    manager: BotManager,
-    session: AsyncSession,
-    update_id: str,
-):
-    """Handles a token and registers a new bot."""
     try:
-        if message.text is None:
-            logger.warning(
-                f"Handler [upd={update_id}] [command=add_bot] [details=token_missing]"
-            )
-            await message.answer("❌ Ошибка: не удалось прочитать токен.")
-            return
-
         if message.from_user is None:
             logger.warning(
                 f"Handler [upd={update_id}] [command=add_bot] [details=user_not_found]"
             )
             return
-
-        if not settings.REGISTRATION_ENABLED:
-            logger.info(
-                f"Handler [upd={update_id}] [command=add_bot] "
-                "[details=registration_disabled]"
-            )
-            await message.answer("Регистрация ботов временно закрыта.")
-            return
-
-        token = message.text.strip()
 
         logger.info(
             f"Handler [upd={update_id}] [command=add_bot] [details=token_received]"

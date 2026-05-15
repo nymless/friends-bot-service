@@ -120,7 +120,7 @@ such as a public HTTPS endpoint, TLS/SSL, and often a reverse proxy like Nginx.
 
 1. Start the service.
 2. Open the master bot in a private chat.
-3. Use `/add_bot` and send a bot token from BotFather.
+3. Send `/add_bot <token>` (token from @BotFather) as one message.
 4. Add the connected game bot to a group.
 5. Use the game commands in that group.
 
@@ -140,8 +140,8 @@ These commands are available in connected game bots:
 
 ## Master Bot Commands
 
-- `/add_bot` — register or reactivate a bot
-- `/remove_bot` — disable a bot in the service
+- `/add_bot <token>` — register or reactivate a bot
+- `/remove_bot <token>` — disable a bot in the service
 - `/set_default_commands` — sync the default command list for connected bots
 
 ## Development
