@@ -133,6 +133,7 @@ These commands are available in connected game bots:
 
 - `/reg` — join the game
 - `/delete` — leave the game while keeping history
+- `/list` — show registered players in this chat
 - `/run` — run the winner draw
 - `/loser` — run the loser draw
 - `/stats` — show winner statistics

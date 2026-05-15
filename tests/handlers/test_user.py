@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from friends_bot_service.handlers.user import register, unregister
+from friends_bot_service.handlers.user import list_players, register, unregister
 
 
 def build_message(
@@ -264,3 +264,62 @@ async def test_unregister_deactivates_player_and_answers():
     assert db_user.is_active is False
     session.commit.assert_awaited_once()
     message.answer.assert_awaited_once_with("Ты вышел из игры. Но мы всё помним... 😉")
+
+
+@pytest.mark.asyncio
+async def test_list_players_returns_early_when_user_is_missing():
+    """When from_user is missing, /list must not query or reply."""
+
+    message = build_message(user_id=None)
+    bot = SimpleNamespace(id=1)
+    session = AsyncMock()
+
+    with patch(
+        "friends_bot_service.handlers.user.user_repo.list_active_players_for_chat",
+        new=AsyncMock(),
+    ) as list_active_players_for_chat:
+        await list_players(message, bot, session, "upd-1")
+
+    list_active_players_for_chat.assert_not_awaited()
+    message.answer.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_players_reports_empty_roster():
+    """When no active players exist for the chat, /list answers with a short note."""
+
+    message = build_message(chat_id=10, user_id=20)
+    bot = SimpleNamespace(id=1)
+    session = AsyncMock()
+
+    with patch(
+        "friends_bot_service.handlers.user.user_repo.list_active_players_for_chat",
+        new=AsyncMock(return_value=[]),
+    ) as list_active_players_for_chat:
+        await list_players(message, bot, session, "upd-1")
+
+    list_active_players_for_chat.assert_awaited_once_with(session, 1, 10)
+    message.answer.assert_awaited_once_with("Никто не зарегистрировался в игре.")
+
+
+@pytest.mark.asyncio
+async def test_list_players_formats_registered_users():
+    """When players exist, /list renders one line per row from the repository."""
+
+    message = build_message(chat_id=10, user_id=20)
+    bot = SimpleNamespace(id=1)
+    session = AsyncMock()
+    alice = SimpleNamespace(full_name="Alice", username="alice_u")
+    bob = SimpleNamespace(full_name="Bob", username=None)
+
+    with patch(
+        "friends_bot_service.handlers.user.user_repo.list_active_players_for_chat",
+        new=AsyncMock(return_value=[alice, bob]),
+    ):
+        await list_players(message, bot, session, "upd-1")
+
+    message.answer.assert_awaited_once_with(
+        "Участники игры в этом чате:\n"
+        "1) Alice @alice_u\n"
+        "2) Bob"
+    )

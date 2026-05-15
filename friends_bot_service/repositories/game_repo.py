@@ -41,7 +41,11 @@ async def get_players(
     chat_id: int,
     today: date,
 ) -> Sequence[Player]:
-    """Returns active players who have not won or lost today."""
+    """Returns active players eligible for today's draw (excludes today's win/lose).
+
+    For everyone registered and active in the chat, see
+    `user_repo.list_active_players_for_chat`.
+    """
 
     skipped_players_stmt = select(GameStats.user_id).where(
         GameStats.bot_id == bot_id,

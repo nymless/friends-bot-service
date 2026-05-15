@@ -40,6 +40,50 @@ async def test_get_db_user_returns_matching_player_and_none_for_missing(
 
 
 @pytest.mark.asyncio
+async def test_list_active_players_for_chat_scopes_bot_chat_and_skips_inactive(
+    db_session: AsyncSession,
+):
+    """
+    Verify roster listing scopes to bot and chat and omits inactive players.
+    """
+
+    db_session.add_all(
+        [
+            Player(
+                bot_id=1,
+                chat_id=10,
+                user_id=1,
+                username="one",
+                full_name="Active One",
+                is_active=True,
+            ),
+            Player(
+                bot_id=1,
+                chat_id=10,
+                user_id=2,
+                username="two",
+                full_name="Inactive",
+                is_active=False,
+            ),
+            Player(
+                bot_id=1,
+                chat_id=99,
+                user_id=3,
+                username="three",
+                full_name="Other chat",
+                is_active=True,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    roster = await user_repo.list_active_players_for_chat(db_session, 1, 10)
+    user_ids = [p.user_id for p in roster]
+
+    assert user_ids == [1]
+
+
+@pytest.mark.asyncio
 async def test_upsert_db_user_creates_new_player(
     db_session: AsyncSession,
     patch_sqlite_upsert: Callable[..., None],

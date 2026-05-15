@@ -88,10 +88,43 @@ async def unregister(
     await message.answer("Ты вышел из игры. Но мы всё помним... 😉")
 
 
+async def list_players(
+    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+):
+    """Lists active registered players for this bot and chat."""
+
+    if message.from_user is None:
+        logger.warning(
+            f"Handler [upd={update_id}] [command=list] [details=user_not_found]"
+        )
+        return
+
+    bot_id = bot.id
+    chat_id = message.chat.id
+
+    logger.info(f"Handler [upd={update_id}] [command=list] [details=list_requested]")
+
+    players = await user_repo.list_active_players_for_chat(session, bot_id, chat_id)
+
+    if not players:
+        await message.answer("Никто не зарегистрировался в игре.")
+        return
+
+    lines = []
+    for i, player in enumerate(players, 1):
+        if player.username:
+            lines.append(f"{i}) {player.full_name} @{player.username}")
+        else:
+            lines.append(f"{i}) {player.full_name}")
+
+    await message.answer("Участники игры в этом чате:\n" + "\n".join(lines))
+
+
 def get_router() -> Router:
     """Creates a router with user command handlers."""
 
     router = Router()
     router.message.register(register, Command("reg"))
     router.message.register(unregister, Command("delete"))
+    router.message.register(list_players, Command("list"))
     return router

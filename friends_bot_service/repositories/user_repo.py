@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,20 @@ async def get_db_user(
     result = await session.execute(stmt)
     db_user = result.scalar_one_or_none()
     return db_user
+
+
+async def list_active_players_for_chat(
+    session: AsyncSession, bot_id: int, chat_id: int
+) -> Sequence[Player]:
+    """Returns active players registered for this bot and chat."""
+
+    stmt = select(Player).where(
+        Player.bot_id == bot_id,
+        Player.chat_id == chat_id,
+        Player.is_active.is_(True),
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()
 
 
 async def upsert_db_user(
