@@ -145,6 +145,19 @@ These commands are available in connected game bots:
 - `/remove_bot <token>` — disable a bot in the service
 - `/set_default_commands` — sync the default command list for connected bots
 
+## Privacy and Security
+
+- Bot tokens in the database are encrypted (Fernet, `ENCRYPTION_KEY`).
+- After `/add_bot` or `/remove_bot`, the token message is deleted from the master
+  chat when Telegram allows it.
+- `LoggingMiddleware` (`middlewares/logging.py`): message text that does not start
+  with `/` is logged as `[non-command]`; `/add_bot` and `/remove_bot` log the
+  command name only (no token).
+- Webhook mode validates `X-Telegram-Bot-Api-Secret-Token` against
+  `WEBHOOK_SECRET_TOKEN`.
+- The database still stores Telegram user/chat ids, display names, and per-chat game
+  stats — protect `.env`, DB, and logs accordingly.
+
 ## Development
 
 ```bash

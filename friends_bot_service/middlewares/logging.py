@@ -5,14 +5,19 @@ from aiogram.types.user import User
 
 logger = logging.getLogger(__name__)
 
+NON_COMMAND_LOG_PLACEHOLDER = "[non-command]"
+
 
 def redact_message_text_for_log(text: str) -> str:
     """
-    Never log secrets after master bot commands.
+    Prepare message text for logs.
 
-    If the message starts with ``/add_bot`` or ``/remove_bot``, only the command
-    name is logged (covers ``/cmd``, ``/cmd@bot``, ``/cmd token``, end of string).
+    - Non-commands (text not starting with ``/``) are never logged verbatim.
+    - ``/add_bot`` and ``/remove_bot`` log only the command name (no token).
     """
+
+    if not text.startswith("/"):
+        return NON_COMMAND_LOG_PLACEHOLDER
 
     if text.startswith("/remove_bot"):
         return "/remove_bot"
@@ -27,6 +32,7 @@ class LoggingMiddleware(BaseMiddleware):
 
     - Injects update_id into the handler context for logging.
     - Logs all incoming events, including those ignored by handlers.
+    - Does not log non-command message text (groups with privacy mode off, DMs).
     - Does not log arguments of ``/add_bot`` or ``/remove_bot`` (master bot tokens).
     """
 

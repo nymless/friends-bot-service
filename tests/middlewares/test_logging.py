@@ -1,6 +1,9 @@
 import pytest
 
-from friends_bot_service.middlewares.logging import redact_message_text_for_log
+from friends_bot_service.middlewares.logging import (
+    NON_COMMAND_LOG_PLACEHOLDER,
+    redact_message_text_for_log,
+)
 
 
 @pytest.mark.parametrize(
@@ -16,8 +19,10 @@ from friends_bot_service.middlewares.logging import redact_message_text_for_log
         ("/remove_bot x:y", "/remove_bot"),
         ("/remove_bot@bot", "/remove_bot"),
         ("/stats", "/stats"),
-        ("plain text", "plain text"),
-        ("", ""),
+        ("/reg", "/reg"),
+        ("plain text", NON_COMMAND_LOG_PLACEHOLDER),
+        ("", NON_COMMAND_LOG_PLACEHOLDER),
+        (" /reg", NON_COMMAND_LOG_PLACEHOLDER),
     ],
 )
 def test_redact_message_text_for_log(text: str, expected: str) -> None:

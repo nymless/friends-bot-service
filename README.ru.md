@@ -146,6 +146,18 @@ Nginx.
 - `/remove_bot <токен>` — отключить бота в сервисе
 - `/set_default_commands` — обновить список команд по умолчанию у подключённых ботов
 
+## Конфиденциальность и безопасность
+
+- Токены ботов в БД шифруются (Fernet, `ENCRYPTION_KEY`).
+- После `/add_bot` и `/remove_bot` сообщение с токеном удаляется из чата
+  мастер-бота, если Telegram это позволяет.
+- `LoggingMiddleware` (`middlewares/logging.py`): текст без ведущего `/` в логах
+  как `[non-command]`; у `/add_bot` и `/remove_bot` пишется только имя команды.
+- В webhook-режиме проверяется заголовок `X-Telegram-Bot-Api-Secret-Token` против
+  `WEBHOOK_SECRET_TOKEN`.
+- В БД остаются Telegram user/chat id, отображаемые имена и статистика по чатам —
+  защищайте `.env`, БД и логи как production-секреты.
+
 ## Разработка
 
 ```bash
