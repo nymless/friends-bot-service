@@ -319,7 +319,5 @@ async def test_list_players_formats_registered_users():
         await list_players(message, bot, session, "upd-1")
 
     message.answer.assert_awaited_once_with(
-        "Участники игры в этом чате:\n"
-        "1) Alice @alice_u\n"
-        "2) Bob"
+        "Участники игры в этом чате:\n1) Alice @alice_u\n2) Bob"
     )

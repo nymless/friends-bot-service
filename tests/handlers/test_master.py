@@ -84,7 +84,8 @@ async def test_add_bot_shows_usage_when_token_missing():
     await handle_add_bot(message, command, manager, session, "upd-1")
 
     message.answer.assert_awaited_once_with(
-        "Укажи токен в одной команде: `/add_bot <токен>` — токен из @BotFather."
+        "Отправьте одним сообщением: /add_bot и токен через пробел. "
+        "Токен выдаёт @BotFather."
     )
 
 
@@ -153,7 +154,8 @@ async def test_remove_bot_shows_usage_when_token_missing():
     await handle_remove_bot(message, command, manager, session, "upd-1")
 
     message.answer.assert_awaited_once_with(
-        "Укажи токен в одной команде: `/remove_bot <токен>` — токен из @BotFather."
+        "Отправьте одним сообщением: /remove_bot и токен через пробел. "
+        "Токен выдаёт @BotFather."
     )
 
 

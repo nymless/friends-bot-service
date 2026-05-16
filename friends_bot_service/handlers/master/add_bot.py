@@ -34,7 +34,8 @@ async def handle_add_bot(
     raw = (command.args or "").strip()
     if not raw:
         await message.answer(
-            "Укажи токен в одной команде: `/add_bot <токен>` — токен из @BotFather."
+            "Отправьте одним сообщением: /add_bot и токен через пробел. "
+            "Токен выдаёт @BotFather."
         )
         return
 

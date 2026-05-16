@@ -22,7 +22,8 @@ async def handle_remove_bot(
     raw = (command.args or "").strip()
     if not raw:
         await message.answer(
-            "Укажи токен в одной команде: `/remove_bot <токен>` — токен из @BotFather."
+            "Отправьте одним сообщением: /remove_bot и токен через пробел. "
+            "Токен выдаёт @BotFather."
         )
         return
 
