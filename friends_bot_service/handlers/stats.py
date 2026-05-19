@@ -38,7 +38,10 @@ async def show_statistics(
 
 
 async def show_winner_statistics(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Shows the winner statistics."""
 
@@ -58,7 +61,10 @@ async def show_winner_statistics(
 
 
 async def show_loser_statistics(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Shows the loser statistics."""
 

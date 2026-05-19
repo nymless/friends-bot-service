@@ -17,7 +17,7 @@ async def handle_add_bot(
     command: CommandObject,
     manager: BotManager,
     session: AsyncSession,
-    update_id: str,
+    update_id: str | None = None,
 ):
     """Registers a bot: /add_bot <token from @BotFather>."""
 

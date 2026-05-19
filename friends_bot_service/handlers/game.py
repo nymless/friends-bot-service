@@ -72,7 +72,10 @@ async def start_game(
 
 
 async def start_winner_game(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Starts a winner game."""
 
@@ -101,7 +104,10 @@ async def start_winner_game(
 
 
 async def start_loser_game(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Starts a loser game."""
 

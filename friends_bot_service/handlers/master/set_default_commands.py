@@ -20,7 +20,7 @@ from .common import (
 async def set_default_commands(
     message: types.Message,
     session: AsyncSession,
-    update_id: str,
+    update_id: str | None = None,
 ):
     """Starts the default command sync flow."""
 
@@ -96,7 +96,7 @@ async def set_default_commands(
 async def set_default_commands_for_selected_bot(
     callback: types.CallbackQuery,
     session: AsyncSession,
-    update_id: str,
+    update_id: str | None = None,
 ):
     """Updates default commands for the selected bot."""
 
@@ -180,7 +180,7 @@ async def set_default_commands_for_selected_bot(
 async def set_default_commands_for_all_bots(
     callback: types.CallbackQuery,
     session: AsyncSession,
-    update_id: str,
+    update_id: str | None = None,
 ):
     """Updates default commands for all connected bots."""
 

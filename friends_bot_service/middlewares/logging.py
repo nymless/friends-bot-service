@@ -30,14 +30,14 @@ class LoggingMiddleware(BaseMiddleware):
     """
     Middleware for logging incoming events.
 
-    - Injects update_id into the handler context for logging.
+    - Optionally injects update_id into the handler context when the event has one.
     - Logs all incoming events, including those ignored by handlers.
     - Does not log non-command message text (groups with privacy mode off, DMs).
     - Does not log arguments of ``/add_bot`` or ``/remove_bot`` (master bot tokens).
     """
 
     async def __call__(self, handler, event, data):
-        update_id = getattr(event, "update_id", "N/A")
+        update_id = getattr(event, "update_id", None)
         data["update_id"] = update_id
 
         user: User | None = data.get("event_from_user")

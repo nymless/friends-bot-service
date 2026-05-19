@@ -15,7 +15,7 @@ async def handle_remove_bot(
     command: CommandObject,
     manager: BotManager,
     session: AsyncSession,
-    update_id: str,
+    update_id: str | None = None,
 ):
     """Disconnects a bot: /remove_bot <token from @BotFather>."""
 

@@ -17,7 +17,7 @@ SET_DEFAULT_COMMANDS_BOT_PREFIX = "set_default_commands:bot:"
 
 
 async def try_delete_token_message(
-    message: types.Message, *, update_id: str, flow: str
+    message: types.Message, *, update_id: str | None = None, flow: str
 ) -> None:
     """Removes a token message from the chat history."""
 

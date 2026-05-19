@@ -11,7 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 async def register(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Registers a user with soft registration."""
 
@@ -47,7 +50,10 @@ async def register(
 
 
 async def unregister(
-    message: types.Message, session: AsyncSession, bot: Bot, update_id: str
+    message: types.Message,
+    session: AsyncSession,
+    bot: Bot,
+    update_id: str | None = None,
 ):
     """Unregisters a user with soft unregistration."""
 
@@ -89,7 +95,10 @@ async def unregister(
 
 
 async def list_players(
-    message: types.Message, bot: Bot, session: AsyncSession, update_id: str
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    update_id: str | None = None,
 ):
     """Lists active registered players for this bot and chat."""
 
