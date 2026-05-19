@@ -39,7 +39,6 @@ def setup_logging() -> None:
     formatter = logging.Formatter(log_format, datefmt=date_format)
     console_handler.setFormatter(formatter)
     console_handler.addFilter(PackagePathFilter())
-    root_logger.handlers = []
     root_logger.addHandler(console_handler)
 
 

@@ -74,6 +74,7 @@ DB_POOL_RECYCLE=3600
 - `WEBHOOK_BASE_URL` обязателен в режиме webhook и должен указывать на публичный базовый URL сервиса.
 - `WEBHOOK_SECRET_TOKEN` обязателен в режиме webhook и используется для проверки, что запросы действительно приходят от Telegram.
 - `REGISTRATION_ENABLED=false` отключает и `/reg`, и `/add_bot`, включая повторные регистрации, до следующего запуска сервиса с включённым флагом.
+- `LOG_INBOUND_COMMANDS=true` пишет access-log входящих команд с `/` до хендлеров.
 - `ENCRYPTION_KEY` должен быть корректным Fernet-ключом.
 - Игровые боты добавляются позже через мастер-бота, а не через `.env`.
 
@@ -151,8 +152,7 @@ Nginx.
 - Токены ботов в БД шифруются (Fernet, `ENCRYPTION_KEY`).
 - После `/add_bot` и `/remove_bot` сообщение с токеном удаляется из чата
   мастер-бота, если Telegram это позволяет.
-- `LoggingMiddleware` (`middlewares/logging.py`): текст без ведущего `/` в логах
-  как `[non-command]`; у `/add_bot` и `/remove_bot` пишется только имя команды.
+- `LOG_INBOUND_COMMANDS=true` включает access-log только для команд с `/`; у `/add_bot` и `/remove_bot` — только имя команды.
 - В webhook-режиме проверяется заголовок `X-Telegram-Bot-Api-Secret-Token` против
   `WEBHOOK_SECRET_TOKEN`.
 - В БД остаются Telegram user/chat id, отображаемые имена и статистика по чатам —
