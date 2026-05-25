@@ -1,138 +1,142 @@
 import asyncio
 import logging
-import random
-from datetime import datetime, timezone
 
 from aiogram import Bot, Router, types
 from aiogram.filters.command import Command
 from aiogram.utils.chat_action import ChatActionSender
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.core.lock import get_bot_chat_lock
-from friends_bot_service.enums.enums import GameType
-from friends_bot_service.repositories import bot_repo, game_repo, user_repo
-from friends_bot_service.texts.game_text import WINNER_MESSAGES
+from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
+from friends_bot_service.domain import GameType
+from friends_bot_service.usecases.game import (
+    PrepareDraw,
+    PrepareDrawCommand,
+    PrepareDrawOutcome,
+    PrepareDrawResult,
+    RecordDraw,
+    RecordDrawCommand,
+)
+from friends_bot_service.usecases.game.run_draw import TouchBotGameAttempt
 
 logger = logging.getLogger(__name__)
 
+_prepare_draw = PrepareDraw()
+_record_draw = RecordDraw()
+_touch_bot_game_attempt = TouchBotGameAttempt()
 
-async def start_game(
+
+async def _run_draw(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
-    bot_id: int,
-    chat_id: int,
     game_type: GameType,
-):
-    """Starts a game for a given bot_id, chat_id and game_type."""
-
-    lock = get_bot_chat_lock((bot_id, chat_id))
-
-    async with lock:
-        today_utc = datetime.now(timezone.utc).date()
-
-        stats = await game_repo.get_game_stats(
-            session, bot_id, chat_id, game_type, today_utc
+    *,
+    command_name: str,
+    update_id: str | None,
+) -> None:
+    from_user = message.from_user
+    if from_user is None:
+        logger.warning(
+            f"Handler [upd={update_id}] [command={command_name}] "
+            "[details=user_not_found]"
         )
-        if stats:
-            await message.answer("Сегодня выбор уже сделан!")
-            return
+        return
 
-        players = await game_repo.get_players(session, bot_id, chat_id, today_utc)
-        if not players:
-            await message.answer("Никто не зарегистрировался!")
-            return
+    async def _prepare(uow) -> PrepareDrawResult | None:
+        await _touch_bot_game_attempt.execute(bot.id, uow.bots)
+        await uow.commit()
 
-        # Pick the winner
-        winner = random.choice(players)
+        command = PrepareDrawCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=from_user.id,
+            game_type=game_type,
+        )
+        return await _prepare_draw.execute(command, uow.users, uow.games)
 
-        # Prepare the output messages
-        steps = WINNER_MESSAGES[game_type][:-1]
-        final_step = WINNER_MESSAGES[game_type][-1] + winner.full_name
+    draw = await run_with_unit_of_work(_prepare, message=message)
+    if draw is None:
+        return
 
-        async with ChatActionSender.typing(
-            chat_id=chat_id,
-            bot=bot,
-            message_thread_id=message.message_thread_id,
-        ):
-            # Send the suspense messages before the result
-            for step in steps:
-                await message.answer(step)
-                await asyncio.sleep(1.5)
+    logger.info(
+        f"Handler [upd={update_id}] [command={command_name}] "
+        f"[details=start_{game_type}_game]"
+    )
 
-            # Send the final result message
+    if draw.outcome == PrepareDrawOutcome.NOT_REGISTERED:
+        await message.answer("Тебя нет в списках игроков.")
+        return
+
+    if draw.outcome == PrepareDrawOutcome.ALREADY_PLAYED:
+        await message.answer("Сегодня выбор уже сделан!")
+        return
+
+    if draw.outcome == PrepareDrawOutcome.NO_PLAYERS:
+        await message.answer("Никто не зарегистрировался!")
+        return
+
+    if draw.outcome != PrepareDrawOutcome.READY:
+        return
+
+    async with ChatActionSender.typing(
+        chat_id=message.chat.id,
+        bot=bot,
+        message_thread_id=message.message_thread_id,
+    ):
+        for step in draw.suspense_messages:
+            await message.answer(step)
             await asyncio.sleep(1.5)
-            await message.answer(final_step)
 
-        await game_repo.update_game_stats(
-            session, bot_id, chat_id, winner.user_id, game_type, today_utc
+        await asyncio.sleep(1.5)
+        if draw.final_message is not None:
+            await message.answer(draw.final_message)
+
+    async def _persist(uow) -> None:
+        assert draw.winner_user_id is not None
+        assert draw.today_utc is not None
+        await _record_draw.execute(
+            RecordDrawCommand(
+                bot_id=bot.id,
+                chat_id=message.chat.id,
+                winner_user_id=draw.winner_user_id,
+                game_type=game_type,
+                today_utc=draw.today_utc,
+            ),
+            uow.games,
         )
+        await uow.commit()
 
-        await session.commit()
+    await run_with_unit_of_work(_persist, message=message)
 
 
 async def start_winner_game(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Starts a winner game."""
 
-    if message.from_user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=run] [details=user_not_found]"
-        )
-        return
-
-    bot_id = bot.id
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-
-    db_user = await user_repo.get_db_user(session, bot_id, chat_id, user_id)
-
-    if db_user is None:
-        await message.answer("Тебя нет в списках игроков.")
-        return
-
-    logger.info(f"Handler [upd={update_id}] [command=run] [details=start_winner_game]")
-
-    await bot_repo.touch_bot_last_game_attempt(session, bot_id)
-    await session.commit()
-
-    await start_game(message, bot, session, bot_id, chat_id, GameType.WINNER)
+    await _run_draw(
+        message,
+        bot,
+        GameType.WINNER,
+        command_name="run",
+        update_id=update_id,
+    )
 
 
 async def start_loser_game(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Starts a loser game."""
 
-    if message.from_user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=loser] [details=user_not_found]"
-        )
-        return
-
-    bot_id = bot.id
-    chat_id = message.chat.id
-    user_id = message.from_user.id
-
-    db_user = await user_repo.get_db_user(session, bot_id, chat_id, user_id)
-
-    if db_user is None:
-        await message.answer("Тебя нет в списках игроков.")
-        return
-
-    logger.info(f"Handler [upd={update_id}] [command=loser] [details=start_loser_game]")
-
-    await bot_repo.touch_bot_last_game_attempt(session, bot_id)
-    await session.commit()
-
-    await start_game(message, bot, session, bot_id, chat_id, GameType.LOSER)
+    await _run_draw(
+        message,
+        bot,
+        GameType.LOSER,
+        command_name="loser",
+        update_id=update_id,
+    )
 
 
 def get_router() -> Router:

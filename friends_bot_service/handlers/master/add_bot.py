@@ -1,12 +1,13 @@
 from aiogram import Bot, types
 from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
 from aiogram.filters import Command, CommandObject
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from friends_bot_service.bootstrap.dependencies import (
+    registration_enabled,
+    run_with_unit_of_work,
+)
 from friends_bot_service.bot_manager.base import BotManager
-from friends_bot_service.core.config import settings
 from friends_bot_service.core.security import encrypt_token
-from friends_bot_service.repositories import bot_repo
 
 from .common import logger, router, sync_default_commands, try_delete_token_message
 
@@ -16,12 +17,11 @@ async def handle_add_bot(
     message: types.Message,
     command: CommandObject,
     manager: BotManager,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Registers a bot: /add_bot <token from @BotFather>."""
 
-    if not settings.REGISTRATION_ENABLED:
+    if not registration_enabled():
         logger.info(
             f"Handler [upd={update_id}] [command=add_bot] "
             "[details=registration_disabled]"
@@ -34,7 +34,7 @@ async def handle_add_bot(
     raw = (command.args or "").strip()
     if not raw:
         await message.answer(
-            "Отправьте одним сообщением: /add_bot и токен через пробел. "
+            "Отправьте одним сообщением: `/add_bot` и токен через пробел. "
             "Токен выдаёт @BotFather."
         )
         return
@@ -90,15 +90,21 @@ async def handle_add_bot(
             await message.answer("❌ Ошибка: у бота отсутствует username.")
             return
 
-        await bot_repo.upsert_bot(
-            session=session,
-            bot_id=bot_info.id,
-            username=bot_username,
-            encrypted_token=encrypted,
-            owner_id=message.from_user.id,
-        )
+        owner_id = message.from_user.id
 
-        await session.commit()
+        async def _persist(uow):
+            await uow.bots.upsert(
+                bot_id=bot_info.id,
+                username=bot_username,
+                encrypted_token=encrypted,
+                owner_id=owner_id,
+            )
+            await uow.commit()
+            return True
+
+        if await run_with_unit_of_work(_persist, message=message) is not True:
+            return
+
         bot = await manager.start_bot(token)
         commands_synced = await sync_default_commands(bot, bot_info.id)
 

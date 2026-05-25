@@ -5,7 +5,7 @@ from aiogram.types import BotCommandScopeAllGroupChats
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from friends_bot_service.core.security import decrypt_token
-from friends_bot_service.models.bot_models import RegisteredBot
+from friends_bot_service.domain import RegisteredBot
 from friends_bot_service.texts.commands import BOT_COMMANDS
 
 logger = logging.getLogger(__name__)

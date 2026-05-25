@@ -2,86 +2,93 @@ import logging
 
 from aiogram import Bot, Router, types
 from aiogram.filters import Command
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.enums.enums import GameType
-from friends_bot_service.repositories import stats_repo
-from friends_bot_service.texts.stats_text import STATS_MESSAGES
+from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
+from friends_bot_service.domain import GameType
+from friends_bot_service.usecases.stats import (
+    ShowStats,
+    ShowStatsCommand,
+    ShowStatsOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
-
-async def show_statistics(
-    message: types.Message,
-    session: AsyncSession,
-    bot_id: int,
-    chat_id: int,
-    game_type: GameType,
-):
-    """Shows the statistics for a given bot_id, chat_id and game_type."""
-
-    stats = await stats_repo.get_top_stats(session, bot_id, chat_id, game_type)
-
-    if not stats:
-        await message.answer("Статистика пока пуста. Сначала сыграйте в игру!")
-        return
-
-    title = STATS_MESSAGES[game_type]
-
-    # Build the response in the format: 1) Name — N times
-    lines = []
-    for i, (name, count) in enumerate(stats, 1):
-        lines.append(f"{i}) {name} — {count} раз(а)")
-
-    response = title + "\n".join(lines)
-    await message.answer(response)
+_show_stats = ShowStats()
 
 
 async def show_winner_statistics(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Shows the winner statistics."""
 
-    if message.from_user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=stats] [details=user_not_found]"
+    async def _run(uow):
+        command = ShowStatsCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
+            game_type=GameType.WINNER,
         )
-        return
+        result = await _show_stats.execute(command, uow.stats)
 
-    bot_id = bot.id
-    chat_id = message.chat.id
+        if result.outcome == ShowStatsOutcome.USER_MISSING:
+            logger.warning(
+                f"Handler [upd={update_id}] [command=stats] [details=user_not_found]"
+            )
+            return
 
-    logger.info(
-        f"Handler [upd={update_id}] [command=stats] [details=winner_stats_requested]"
-    )
-    await show_statistics(message, session, bot_id, chat_id, GameType.WINNER)
+        logger.info(
+            f"Handler [upd={update_id}] [command=stats] "
+            "[details=winner_stats_requested]"
+        )
+        await _answer_stats(message, result)
+
+    await run_with_unit_of_work(_run, message=message)
 
 
 async def show_loser_statistics(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Shows the loser statistics."""
 
-    if message.from_user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=loserstats] [details=user_not_found]"
+    async def _run(uow):
+        command = ShowStatsCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
+            game_type=GameType.LOSER,
         )
+        result = await _show_stats.execute(command, uow.stats)
+
+        if result.outcome == ShowStatsOutcome.USER_MISSING:
+            logger.warning(
+                f"Handler [upd={update_id}] [command=loserstats] "
+                "[details=user_not_found]"
+            )
+            return
+
+        logger.info(
+            f"Handler [upd={update_id}]  "
+            "[command=loserstats] [details=loser_stats_requested]"
+        )
+        await _answer_stats(message, result)
+
+    await run_with_unit_of_work(_run, message=message)
+
+
+async def _answer_stats(message: types.Message, result) -> None:
+    if result.outcome == ShowStatsOutcome.EMPTY:
+        await message.answer(result.message or "")
         return
 
-    bot_id = bot.id
-    chat_id = message.chat.id
-
-    logger.info(
-        f"Handler [upd={update_id}]  "
-        "[command=loserstats] [details=loser_stats_requested]"
-    )
-    await show_statistics(message, session, bot_id, chat_id, GameType.LOSER)
+    lines = [
+        f"{i}) {row.full_name} — {row.count} раз(а)"
+        for i, row in enumerate(result.lines, 1)
+    ]
+    await message.answer((result.message or "") + "\n".join(lines))
 
 
 def get_router() -> Router:

@@ -5,17 +5,15 @@ import sys
 
 from aiogram import Bot, Dispatcher
 from fastapi import FastAPI
-from sqlalchemy import select
 
 from friends_bot_service.api.webhook_handler import router
 from friends_bot_service.bootstrap import dispatchers
+from friends_bot_service.bootstrap.dependencies import unit_of_work
 from friends_bot_service.bot_manager import factory as manager_factory
 from friends_bot_service.bot_manager.base import BotManager
 from friends_bot_service.core.config import settings
-from friends_bot_service.core.database import session_factory
 from friends_bot_service.core.security import decrypt_token
 from friends_bot_service.enums.enums import BotMode
-from friends_bot_service.models.bot_models import RegisteredBot
 
 logger = logging.getLogger(__name__)
 
@@ -80,23 +78,20 @@ def create_webhook_runtime_components() -> tuple[
 async def load_registered_bots(manager: BotManager) -> None:
     """Loads active bots from the database and starts them."""
 
-    async with session_factory() as session:
-        result = await session.execute(
-            select(RegisteredBot).where(RegisteredBot.is_active)
+    async with unit_of_work() as uow:
+        bots_to_load = await uow.bots.list_all_active()
+
+    logger.info("loading bots count=%s", len(bots_to_load))
+
+    for bot in bots_to_load:
+        token = decrypt_token(bot.encrypted_token)
+        await manager.start_bot(token)
+
+        logger.info(
+            "bot started bot_id=%s username=%s",
+            bot.bot_id,
+            bot.username,
         )
-        bots_to_load = result.scalars().all()
-
-        logger.info("loading bots count=%s", len(bots_to_load))
-
-        for bot_db in bots_to_load:
-            token = decrypt_token(bot_db.encrypted_token)
-            await manager.start_bot(token)
-
-            logger.info(
-                "bot started bot_id=%s username=%s",
-                bot_db.bot_id,
-                bot_db.username,
-            )
 
 
 async def run_polling() -> None:

@@ -2,131 +2,153 @@ import logging
 
 from aiogram import Bot, Router, types
 from aiogram.filters import Command
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.core.config import settings
-from friends_bot_service.repositories import user_repo
+from friends_bot_service.bootstrap.dependencies import (
+    registration_enabled,
+    run_with_unit_of_work,
+)
+from friends_bot_service.usecases.user import (
+    ListPlayers,
+    ListPlayersCommand,
+    ListPlayersOutcome,
+    RegisterPlayer,
+    RegisterPlayerCommand,
+    RegisterPlayerOutcome,
+    UnregisterPlayer,
+    UnregisterPlayerCommand,
+    UnregisterPlayerOutcome,
+)
 
 logger = logging.getLogger(__name__)
+
+_unregister_player = UnregisterPlayer()
+_list_players = ListPlayers()
 
 
 async def register(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Registers a user with soft registration."""
 
-    user = message.from_user
-
-    if user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=reg] [details=user_not_found]"
+    async def _run(uow):
+        command = RegisterPlayerCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
+            username=message.from_user.username if message.from_user else None,
+            full_name=message.from_user.full_name if message.from_user else "",
         )
-        return
-
-    if not settings.REGISTRATION_ENABLED:
-        logger.info(
-            f"Handler [upd={update_id}] [command=reg] [details=registration_disabled]"
+        result = await RegisterPlayer(registration_enabled()).execute(
+            command, uow.users
         )
-        await message.answer("Регистрация игроков временно закрыта.")
-        return
 
-    bot_id = bot.id
-    chat_id = message.chat.id
-    user_id = user.id
-    username = user.username
-    full_name = user.full_name
+        if result.outcome == RegisterPlayerOutcome.USER_MISSING:
+            logger.warning(
+                f"Handler [upd={update_id}] [command=reg] [details=user_not_found]"
+            )
+            return
 
-    await user_repo.upsert_db_user(
-        session, bot_id, chat_id, user_id, username, full_name
-    )
-    await session.commit()
+        if result.outcome == RegisterPlayerOutcome.REGISTRATION_DISABLED:
+            logger.info(
+                f"Handler [upd={update_id}] [command=reg] "
+                "[details=registration_disabled]"
+            )
+            await message.answer("Регистрация игроков временно закрыта.")
+            return
 
-    logger.info(f"Handler [upd={update_id}] [command=reg] [details=user_activated]")
+        await uow.commit()
+        logger.info(f"Handler [upd={update_id}] [command=reg] [details=user_activated]")
+        await message.answer("Ты в игре!")
 
-    await message.answer("Ты в игре!")
+    await run_with_unit_of_work(_run, message=message)
 
 
 async def unregister(
     message: types.Message,
-    session: AsyncSession,
     bot: Bot,
     update_id: str | None = None,
 ):
     """Unregisters a user with soft unregistration."""
 
-    user = message.from_user
-
-    if user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=delete] [details=user_not_found]"
+    async def _run(uow):
+        command = UnregisterPlayerCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
         )
-        return
+        result = await _unregister_player.execute(command, uow.users)
 
-    bot_id = bot.id
-    chat_id = message.chat.id
-    user_id = user.id
+        if result.outcome == UnregisterPlayerOutcome.USER_MISSING:
+            logger.warning(
+                f"Handler [upd={update_id}] [command=delete] [details=user_not_found]"
+            )
+            return
 
-    db_user = await user_repo.get_db_user(session, bot_id, chat_id, user_id)
+        if result.outcome == UnregisterPlayerOutcome.NOT_FOUND:
+            logger.info(
+                f"Handler [upd={update_id}] [command=delete] "
+                "[details=db_user_not_found]"
+            )
+            await message.answer("Тебя и так нет в списках игроков.")
+            return
 
-    if not db_user:
+        if result.outcome == UnregisterPlayerOutcome.ALREADY_INACTIVE:
+            logger.info(
+                f"Handler [upd={update_id}] [command=delete] [details=already_inactive]"
+            )
+            await message.answer("Тебя и так нет в списках игроков.")
+            return
+
+        await uow.commit()
         logger.info(
-            f"Handler [upd={update_id}] [command=delete] [details=db_user_not_found]"
+            f"Handler [upd={update_id}] [command=delete] [details=user_deactivated]"
         )
-        await message.answer("Тебя и так нет в списках игроков.")
-        return
+        await message.answer("Ты вышел из игры. Но мы всё помним... 😉")
 
-    if not db_user.is_active:
-        logger.info(
-            f"Handler [upd={update_id}] [command=delete] [details=already_inactive]"
-        )
-        await message.answer("Тебя и так нет в списках игроков.")
-        return
-
-    db_user.is_active = False
-    await session.commit()
-
-    logger.info(
-        f"Handler [upd={update_id}] [command=delete] [details=user_deactivated]"
-    )
-    await message.answer("Ты вышел из игры. Но мы всё помним... 😉")
+    await run_with_unit_of_work(_run, message=message)
 
 
 async def list_players(
     message: types.Message,
     bot: Bot,
-    session: AsyncSession,
     update_id: str | None = None,
 ):
     """Lists active registered players for this bot and chat."""
 
-    if message.from_user is None:
-        logger.warning(
-            f"Handler [upd={update_id}] [command=list] [details=user_not_found]"
+    async def _run(uow):
+        command = ListPlayersCommand(
+            bot_id=bot.id,
+            chat_id=message.chat.id,
+            user_id=message.from_user.id if message.from_user else None,
         )
-        return
+        result = await _list_players.execute(command, uow.users)
 
-    bot_id = bot.id
-    chat_id = message.chat.id
+        if result.outcome == ListPlayersOutcome.USER_MISSING:
+            logger.warning(
+                f"Handler [upd={update_id}] [command=list] [details=user_not_found]"
+            )
+            return
 
-    logger.info(f"Handler [upd={update_id}] [command=list] [details=list_requested]")
+        logger.info(
+            f"Handler [upd={update_id}] [command=list] [details=list_requested]"
+        )
 
-    players = await user_repo.list_active_players_for_chat(session, bot_id, chat_id)
+        if result.outcome == ListPlayersOutcome.EMPTY:
+            await message.answer("Никто не зарегистрировался в игре.")
+            return
 
-    if not players:
-        await message.answer("Никто не зарегистрировался в игре.")
-        return
+        lines = []
+        for i, player in enumerate(result.players, 1):
+            if player.username:
+                lines.append(f"{i}) {player.full_name} @{player.username}")
+            else:
+                lines.append(f"{i}) {player.full_name}")
 
-    lines = []
-    for i, player in enumerate(players, 1):
-        if player.username:
-            lines.append(f"{i}) {player.full_name} @{player.username}")
-        else:
-            lines.append(f"{i}) {player.full_name}")
+        await message.answer("Участники игры в этом чате:\n" + "\n".join(lines))
 
-    await message.answer("Участники игры в этом чате:\n" + "\n".join(lines))
+    await run_with_unit_of_work(_run, message=message)
 
 
 def get_router() -> Router:

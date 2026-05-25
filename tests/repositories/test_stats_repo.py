@@ -1,9 +1,16 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.enums.enums import GameType
+from friends_bot_service.domain import GameType
 from friends_bot_service.models.game_models import GameStats, Player
-from friends_bot_service.repositories import stats_repo
+from friends_bot_service.repositories.sqlalchemy.stats_repository import (
+    SqlAlchemyStatsRepository,
+)
+
+
+@pytest.fixture
+def stats(db_session: AsyncSession) -> SqlAlchemyStatsRepository:
+    return SqlAlchemyStatsRepository(db_session)
 
 
 @pytest.mark.asyncio
@@ -16,24 +23,10 @@ from friends_bot_service.repositories import stats_repo
 )
 async def test_get_top_stats_returns_sorted_rows_for_requested_game_type(
     db_session: AsyncSession,
+    stats: SqlAlchemyStatsRepository,
     game_type: GameType,
     expected_rows: list[tuple[str, int]],
 ):
-    """
-    Verify leaderboard query for both winner and loser statistics.
-
-    Scenario:
-    - two players have non-zero stats in different columns
-    - one extra player exists with zero stats
-    - repository is queried for both winner and loser modes
-
-    Expected behavior:
-    - rows are sorted by the requested counter in descending order
-    - zero-count rows are excluded
-    - rows belong only to the requested bot and chat
-    """
-
-    # Create players and stats rows that produce different winner/loser leaderboards.
     db_session.add_all(
         [
             Player(bot_id=1, chat_id=10, user_id=1, full_name="Alice"),
@@ -72,8 +65,6 @@ async def test_get_top_stats_returns_sorted_rows_for_requested_game_type(
     )
     await db_session.commit()
 
-    # Query the leaderboard for the requested game type.
-    rows = await stats_repo.get_top_stats(db_session, 1, 10, game_type)
+    rows = await stats.top_for_chat(1, 10, game_type)
 
-    # The repository must return the expected sorted leaderboard rows only.
-    assert [(name, count) for name, count in rows] == expected_rows
+    assert [(row.full_name, row.count) for row in rows] == expected_rows
