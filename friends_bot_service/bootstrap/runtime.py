@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from friends_bot_service.api.webhook_handler import router
 from friends_bot_service.bootstrap import dispatchers
-from friends_bot_service.bootstrap.dependencies import unit_of_work
+from friends_bot_service.bootstrap.db import unit_of_work
 from friends_bot_service.bot_manager import factory as manager_factory
 from friends_bot_service.bot_manager.base import BotManager
 from friends_bot_service.core.config import settings

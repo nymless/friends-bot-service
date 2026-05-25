@@ -1,4 +1,3 @@
-from collections.abc import Callable
 from types import TracebackType
 from typing import Any
 
@@ -70,12 +69,3 @@ class SqlAlchemyUnitOfWork:
         if self._session is None:
             return
         await self._session.rollback()
-
-
-def unit_of_work_factory(
-    session_factory: async_sessionmaker[AsyncSession],
-) -> Callable[[], SqlAlchemyUnitOfWork]:
-    def factory() -> SqlAlchemyUnitOfWork:
-        return SqlAlchemyUnitOfWork(session_factory)
-
-    return factory

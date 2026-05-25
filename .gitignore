@@ -23,3 +23,6 @@ wheels/
 
 # ruff
 .ruff_cache/
+
+# draw.io
+*.bkp

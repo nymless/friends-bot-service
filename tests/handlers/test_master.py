@@ -16,6 +16,21 @@ from friends_bot_service.handlers.master.set_default_commands import (
     set_default_commands_for_all_bots,
     set_default_commands_for_selected_bot,
 )
+from friends_bot_service.texts.master_text import (
+    BOT_REGISTRATION_DISABLED,
+    CALLBACK_BOT_NOT_OWNED,
+    CALLBACK_INVALID_BOT,
+    CHOOSE_BOT_FOR_COMMAND_SYNC,
+    NO_BOTS_FOR_COMMAND_SYNC,
+    REMOVE_BOT_NOT_FOUND,
+    bot_registered_success,
+    bot_registered_with_commands_warning,
+    bot_removed_success,
+    commands_bulk_failure,
+    commands_updated_for_bot,
+    token_command_usage,
+)
+from friends_bot_service.texts.system import INVALID_BOT_TOKEN
 from tests.helpers.uow import invoke_run_with_unit_of_work
 
 _last_uow: dict[str, AsyncMock] = {}
@@ -118,10 +133,7 @@ async def test_add_bot_shows_usage_when_token_missing():
 
     await handle_add_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with(
-        "Отправьте одним сообщением: `/add_bot` и токен через пробел. "
-        "Токен выдаёт @BotFather."
-    )
+    message.answer.assert_awaited_once_with(token_command_usage("add_bot"))
 
 
 @pytest.mark.asyncio
@@ -136,12 +148,12 @@ async def test_add_bot_rejects_when_registration_is_disabled_without_token():
     command = build_command_args(None)
 
     with patch(
-        "friends_bot_service.handlers.master.add_bot.registration_enabled",
-        return_value=False,
+        "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+        False,
     ):
         await handle_add_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
+    message.answer.assert_awaited_once_with(BOT_REGISTRATION_DISABLED)
 
 
 @pytest.mark.asyncio
@@ -157,8 +169,8 @@ async def test_add_bot_rejects_when_registration_disabled_deletes_token_message(
 
     with (
         patch(
-            "friends_bot_service.handlers.master.add_bot.registration_enabled",
-            return_value=False,
+            "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+            False,
         ),
         patch(
             "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
@@ -167,7 +179,7 @@ async def test_add_bot_rejects_when_registration_disabled_deletes_token_message(
     ):
         await handle_add_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with("Регистрация ботов временно закрыта.")
+    message.answer.assert_awaited_once_with(BOT_REGISTRATION_DISABLED)
     try_delete_token_message_mock.assert_awaited_once_with(
         message,
         update_id="upd-1",
@@ -185,10 +197,7 @@ async def test_remove_bot_shows_usage_when_token_missing():
 
     await handle_remove_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with(
-        "Отправьте одним сообщением: `/remove_bot` и токен через пробел. "
-        "Токен выдаёт @BotFather."
-    )
+    message.answer.assert_awaited_once_with(token_command_usage("remove_bot"))
 
 
 @pytest.mark.asyncio
@@ -231,7 +240,7 @@ async def test_handle_add_bot_rejects_invalid_token_and_deletes_message():
     ):
         await handle_add_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
+    message.answer.assert_awaited_once_with(INVALID_BOT_TOKEN)
     run_uow.assert_not_awaited()
     manager.start_bot.assert_not_awaited()
     try_delete_token_message_mock.assert_awaited_once_with(
@@ -300,7 +309,7 @@ async def test_handle_add_bot_registers_bot_and_reports_success():
     uow.commit.assert_awaited_once()
     manager.start_bot.assert_awaited_once_with("123:valid-token")
     sync_default_commands_mock.assert_awaited_once()
-    message.answer.assert_awaited_once_with("✅ Бот @new_bot успешно зарегистрирован!")
+    message.answer.assert_awaited_once_with(bot_registered_success("new_bot"))
     try_delete_token_message_mock.assert_awaited_once_with(
         message,
         update_id="upd-1",
@@ -355,8 +364,7 @@ async def test_handle_add_bot_reports_command_sync_failure_after_registration():
 
     # The final answer must keep registration success and mention command sync retry.
     message.answer.assert_awaited_once_with(
-        "✅ Бот @new_bot успешно зарегистрирован!\n"
-        "Команды обновить не удалось. Попробуй /set_default_commands позже."
+        bot_registered_with_commands_warning("new_bot")
     )
 
 
@@ -399,7 +407,7 @@ async def test_handle_remove_bot_rejects_invalid_token_and_deletes_message():
     ):
         await handle_remove_bot(message, command, manager, "upd-1")
 
-    message.answer.assert_awaited_once_with("❌ Ошибка: неверный или неактивный токен.")
+    message.answer.assert_awaited_once_with(INVALID_BOT_TOKEN)
     manager.stop_bot.assert_not_awaited()
     run_uow.assert_not_awaited()
     try_delete_token_message_mock.assert_awaited_once_with(
@@ -448,10 +456,7 @@ async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
     uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
     uow.rollback.assert_awaited_once()
     manager.stop_bot.assert_not_awaited()
-    message.answer.assert_awaited_once_with(
-        "Не получилось отключить бота. Проверьте токен и что он был "
-        "подключён с этого Telegram-аккаунта."
-    )
+    message.answer.assert_awaited_once_with(REMOVE_BOT_NOT_FOUND)
 
 
 @pytest.mark.asyncio
@@ -495,7 +500,7 @@ async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
     uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
     uow.commit.assert_awaited_once()
     manager.stop_bot.assert_awaited_once_with(999)
-    message.answer.assert_awaited_once_with("Бот @owned_bot отключён от сервиса.")
+    message.answer.assert_awaited_once_with(bot_removed_success("owned_bot"))
     try_delete_token_message_mock.assert_awaited_once_with(
         message,
         update_id="upd-1",
@@ -639,9 +644,7 @@ async def test_set_default_commands_reports_when_owner_has_no_bots():
         await set_default_commands(message, "upd-1")
 
     # The handler must answer with the no-bots text.
-    message.answer.assert_awaited_once_with(
-        "У тебя пока нет подключённых ботов для обновления команд."
-    )
+    message.answer.assert_awaited_once_with(NO_BOTS_FOR_COMMAND_SYNC)
 
 
 @pytest.mark.asyncio
@@ -676,7 +679,7 @@ async def test_set_default_commands_updates_single_bot_immediately():
 
     # The handler must sync immediately and answer with the success text.
     sync_commands_for_bot.assert_awaited_once_with(registered_bot)
-    message.answer.assert_awaited_once_with("Команды для @single_bot обновлены.")
+    message.answer.assert_awaited_once_with(commands_updated_for_bot("@single_bot"))
 
 
 @pytest.mark.asyncio
@@ -708,8 +711,7 @@ async def test_set_default_commands_shows_keyboard_for_multiple_bots():
     # The handler must send the selection prompt with an inline keyboard.
     assert message.answer.await_count == 1
     assert (
-        message.answer.await_args.args[0]
-        == "Выбери бота, для которого нужно обновить команды, или обнови их у всех."
+        message.answer.await_args.args[0] == CHOOSE_BOT_FOR_COMMAND_SYNC
     )
     assert message.answer.await_args.kwargs["reply_markup"] is not None
 
@@ -735,7 +737,7 @@ async def test_set_default_commands_for_selected_bot_rejects_invalid_callback_da
     await set_default_commands_for_selected_bot(callback, "upd-1")
 
     # The handler must answer with the invalid-bot alert.
-    callback.answer.assert_awaited_once_with("Некорректный бот.", show_alert=True)
+    callback.answer.assert_awaited_once_with(CALLBACK_INVALID_BOT, show_alert=True)
 
 
 @pytest.mark.asyncio
@@ -754,7 +756,7 @@ async def test_set_default_commands_for_selected_bot_rejects_unavailable_bot():
     # Prepare a callback pointing to an inaccessible bot.
     callback = build_callback(user_id=20, data="set_default_commands:bot:1")
 
-    async def capture_no_owner_bot(callback, *, message=None, on_db_unavailable=None):
+    async def capture_no_owner_bot(callback):
         uow = AsyncMock()
         uow.bots = AsyncMock()
         uow.bots.get_active_for_owner = AsyncMock(return_value=None)
@@ -767,9 +769,7 @@ async def test_set_default_commands_for_selected_bot_rejects_unavailable_bot():
         await set_default_commands_for_selected_bot(callback, "upd-1")
 
     # The handler must answer with the unavailable-bot alert.
-    callback.answer.assert_awaited_once_with(
-        "Этот бот недоступен для управления.", show_alert=True
-    )
+    callback.answer.assert_awaited_once_with(CALLBACK_BOT_NOT_OWNED, show_alert=True)
 
 
 @pytest.mark.asyncio
@@ -792,7 +792,8 @@ async def test_set_default_commands_for_selected_bot_edits_success_message():
 
     uow = AsyncMock()
     uow.bots = AsyncMock()
-    async def capture_owner_bot(callback, *, message=None, on_db_unavailable=None):
+
+    async def capture_owner_bot(callback):
         uow = AsyncMock()
         uow.bots = AsyncMock()
         uow.bots.get_active_for_owner = AsyncMock(return_value=registered_bot)
@@ -819,7 +820,7 @@ async def test_set_default_commands_for_selected_bot_edits_success_message():
     callback.answer.assert_awaited_once_with()
     edit_callback_message_mock.assert_awaited_once_with(
         callback,
-        "Команды для @selected_bot обновлены.",
+        commands_updated_for_bot("@selected_bot"),
     )
 
 
@@ -862,5 +863,5 @@ async def test_set_default_commands_for_all_bots_reports_partial_failures():
     callback.answer.assert_awaited_once_with()
     edit_callback_message_mock.assert_awaited_once_with(
         callback,
-        "Не удалось обновить команды для:\n- @second_bot",
+        commands_bulk_failure(["@second_bot"]),
     )

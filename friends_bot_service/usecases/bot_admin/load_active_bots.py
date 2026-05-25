@@ -1,7 +1,11 @@
 import logging
 from dataclasses import dataclass
 
-from friends_bot_service.usecases.ports import BotRepository, BotRuntimePort, TokenCipherPort
+from friends_bot_service.usecases.ports import (
+    BotRepository,
+    BotRuntimePort,
+    TokenCipherPort,
+)
 
 logger = logging.getLogger(__name__)
 

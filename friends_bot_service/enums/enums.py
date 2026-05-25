@@ -8,13 +8,6 @@ class BotMode(StrEnum):
     WEBHOOK = "webhook"
 
 
-class GameType(StrEnum):
-    """Game type enum."""
-
-    WINNER = "winner"
-    LOSER = "loser"
-
-
 class DateCol(StrEnum):
     """Win/Lose date column enum."""
 

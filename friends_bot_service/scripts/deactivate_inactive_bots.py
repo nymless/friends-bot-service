@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-from friends_bot_service.bootstrap.dependencies import unit_of_work
+from friends_bot_service.bootstrap.db import unit_of_work
 
 logger = logging.getLogger(__name__)
 

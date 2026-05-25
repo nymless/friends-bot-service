@@ -1,1 +1,1 @@
-"""Application bootstrap helpers."""
+"""Application bootstrap helpers (composition root)."""

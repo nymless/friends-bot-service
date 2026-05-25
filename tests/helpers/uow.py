@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock
 
 
-async def invoke_run_with_unit_of_work(callback, *, message=None):
+async def invoke_run_with_unit_of_work(callback):
     """Runs a handler callback with a mocked unit of work."""
 
     uow = AsyncMock()

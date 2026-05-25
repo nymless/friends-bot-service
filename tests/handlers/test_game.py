@@ -8,6 +8,11 @@ import pytest
 from friends_bot_service.domain import GameType
 from friends_bot_service.handlers.game import start_loser_game, start_winner_game
 from friends_bot_service.texts.game_text import WINNER_MESSAGES
+from friends_bot_service.texts.player_text import (
+    DRAW_ALREADY_PLAYED,
+    DRAW_NO_PLAYERS,
+    PLAYER_NOT_IN_LIST,
+)
 from friends_bot_service.usecases.game.run_draw import (
     PrepareDrawOutcome,
     PrepareDrawResult,
@@ -64,7 +69,7 @@ async def test_start_game_reports_if_already_run():
     touch_execute.assert_awaited_once()
     prepare_execute.assert_awaited_once()
     record_execute.assert_not_awaited()
-    message.answer.assert_awaited_once_with("Сегодня выбор уже сделан!")
+    message.answer.assert_awaited_once_with(DRAW_ALREADY_PLAYED)
 
 
 @pytest.mark.asyncio
@@ -96,7 +101,7 @@ async def test_start_game_reports_if_no_players():
 
     prepare_execute.assert_awaited_once()
     record_execute.assert_not_awaited()
-    message.answer.assert_awaited_once_with("Никто не зарегистрировался!")
+    message.answer.assert_awaited_once_with(DRAW_NO_PLAYERS)
 
 
 @pytest.mark.asyncio
@@ -188,7 +193,7 @@ async def test_start_winner_game_rejects_unregistered_user():
     touch_execute.assert_awaited_once()
     prepare_execute.assert_awaited_once()
     record_execute.assert_not_awaited()
-    message.answer.assert_awaited_once_with("Тебя нет в списках игроков.")
+    message.answer.assert_awaited_once_with(PLAYER_NOT_IN_LIST)
 
 
 @pytest.mark.asyncio
@@ -309,4 +314,4 @@ async def test_start_game_serializes_parallel_calls_for_same_bot_and_chat():
         for call in message_one.answer.await_args_list
         + message_two.answer.await_args_list
     ]
-    assert answers.count("Сегодня выбор уже сделан!") == 1
+    assert answers.count(DRAW_ALREADY_PLAYED) == 1

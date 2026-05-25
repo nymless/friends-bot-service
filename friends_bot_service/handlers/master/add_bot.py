@@ -4,11 +4,26 @@ from aiogram import Bot, types
 from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
 from aiogram.filters import Command, CommandObject
 
-from friends_bot_service.bootstrap.dependencies import (
-    registration_enabled,
+from friends_bot_service.bootstrap.db import (
+    DatabaseUnavailableError,
     run_with_unit_of_work,
 )
+from friends_bot_service.core.config import settings
 from friends_bot_service.infrastructure import default_token_cipher
+from friends_bot_service.repositories.unit_of_work import SqlAlchemyUnitOfWork
+from friends_bot_service.texts.master_text import (
+    BOT_REGISTRATION_DISABLED,
+    BOT_TOKEN_VERIFY_FAILED,
+    BOT_USERNAME_MISSING,
+    bot_registered_success,
+    bot_registered_with_commands_warning,
+    token_command_usage,
+)
+from friends_bot_service.texts.system import (
+    DB_UNAVAILABLE_MESSAGE,
+    INVALID_BOT_TOKEN,
+    TELEGRAM_NETWORK_ERROR,
+)
 from friends_bot_service.usecases.bot_admin import (
     RegisterBot,
     RegisterBotCommand,
@@ -30,22 +45,19 @@ async def handle_add_bot(
 ):
     """Registers a bot: /add_bot <token from @BotFather>."""
 
-    if not registration_enabled():
+    if not settings.REGISTRATION_ENABLED:
         logger.info(
             f"Handler [upd={update_id}] [command=add_bot] "
             "[details=registration_disabled]"
         )
-        await message.answer("Регистрация ботов временно закрыта.")
+        await message.answer(BOT_REGISTRATION_DISABLED)
         if (command.args or "").strip():
             await try_delete_token_message(message, update_id=update_id, flow="add_bot")
         return
 
     raw = (command.args or "").strip()
     if not raw:
-        await message.answer(
-            "Отправьте одним сообщением: `/add_bot` и токен через пробел. "
-            "Токен выдаёт @BotFather."
-        )
+        await message.answer(token_command_usage("add_bot"))
         return
 
     token = raw
@@ -69,16 +81,14 @@ async def handle_add_bot(
             logger.error(
                 f"Handler [upd={update_id}] [command=add_bot] [details=network_error]"
             )
-            await message.answer(
-                "❌ Ошибка сети Telegram: пожалуйста, попробуйте позже."
-            )
+            await message.answer(TELEGRAM_NETWORK_ERROR)
             return
 
         except TelegramUnauthorizedError:
             logger.warning(
                 f"Handler [upd={update_id}] [command=add_bot] [details=invalid_token]"
             )
-            await message.answer("❌ Ошибка: неверный или неактивный токен.")
+            await message.answer(INVALID_BOT_TOKEN)
             return
 
         except Exception:
@@ -86,7 +96,7 @@ async def handle_add_bot(
                 f"Handler [upd={update_id}] "
                 "[command=add_bot] [details=unexpected_registration_failed]"
             )
-            await message.answer("❌ Ошибка: не удалось верифицировать токен.")
+            await message.answer(BOT_TOKEN_VERIFY_FAILED)
             return
 
         bot_username = bot_info.username
@@ -95,13 +105,13 @@ async def handle_add_bot(
                 f"Handler [upd={update_id}] [command=add_bot] "
                 "[details=bot_username_missing]"
             )
-            await message.answer("❌ Ошибка: у бота отсутствует username.")
+            await message.answer(BOT_USERNAME_MISSING)
             return
 
         owner_id = message.from_user.id
-        register_bot = RegisterBot(registration_enabled())
+        register_bot = RegisterBot(settings.REGISTRATION_ENABLED)
 
-        async def _persist(uow):
+        async def _persist(uow: SqlAlchemyUnitOfWork):
             result = await register_bot.execute(
                 RegisterBotCommand(
                     bot_id=bot_info.id,
@@ -117,11 +127,13 @@ async def handle_add_bot(
             await uow.commit()
             return result
 
-        persist_result = await run_with_unit_of_work(_persist, message=message)
-        if persist_result is None:
+        try:
+            persist_result = await run_with_unit_of_work(_persist)
+        except DatabaseUnavailableError:
+            await message.answer(DB_UNAVAILABLE_MESSAGE)
             return
         if persist_result.outcome == RegisterBotOutcome.REGISTRATION_DISABLED:
-            await message.answer("Регистрация ботов временно закрыта.")
+            await message.answer(BOT_REGISTRATION_DISABLED)
             return
         if persist_result.outcome != RegisterBotOutcome.SUCCESS:
             return
@@ -135,12 +147,9 @@ async def handle_add_bot(
         )
 
         if commands_synced:
-            await message.answer(f"✅ Бот @{bot_username} успешно зарегистрирован!")
+            await message.answer(bot_registered_success(bot_username))
             return
 
-        await message.answer(
-            f"✅ Бот @{bot_username} успешно зарегистрирован!\n"
-            "Команды обновить не удалось. Попробуй /set_default_commands позже."
-        )
+        await message.answer(bot_registered_with_commands_warning(bot_username))
     finally:
         await try_delete_token_message(message, update_id=update_id, flow="add_bot")

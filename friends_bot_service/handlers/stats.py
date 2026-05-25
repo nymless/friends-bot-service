@@ -3,8 +3,12 @@ import logging
 from aiogram import Bot, Router, types
 from aiogram.filters import Command
 
-from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
+from friends_bot_service.bootstrap.db import (
+    DatabaseUnavailableError,
+    run_with_unit_of_work,
+)
 from friends_bot_service.domain import GameType
+from friends_bot_service.texts.system import DB_UNAVAILABLE_MESSAGE
 from friends_bot_service.usecases.stats import (
     ShowStats,
     ShowStatsCommand,
@@ -44,7 +48,10 @@ async def show_winner_statistics(
         )
         await _answer_stats(message, result)
 
-    await run_with_unit_of_work(_run, message=message)
+    try:
+        await run_with_unit_of_work(_run)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 async def show_loser_statistics(
@@ -76,7 +83,10 @@ async def show_loser_statistics(
         )
         await _answer_stats(message, result)
 
-    await run_with_unit_of_work(_run, message=message)
+    try:
+        await run_with_unit_of_work(_run)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 async def _answer_stats(message: types.Message, result) -> None:

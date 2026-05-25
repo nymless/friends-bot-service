@@ -5,6 +5,14 @@ import pytest
 
 from friends_bot_service.domain import Player
 from friends_bot_service.handlers.user import list_players, register, unregister
+from friends_bot_service.texts.player_text import (
+    PLAYER_ALREADY_NOT_IN_LIST,
+    PLAYER_LIST_EMPTY,
+    PLAYER_LIST_HEADER,
+    PLAYER_REGISTERED,
+    PLAYER_REGISTRATION_DISABLED,
+    PLAYER_UNREGISTERED,
+)
 from friends_bot_service.usecases.user import (
     ListPlayersOutcome,
     ListPlayersResult,
@@ -64,8 +72,8 @@ async def test_register_rejects_when_registration_is_disabled():
     bot = SimpleNamespace(id=1)
 
     with patch(
-        "friends_bot_service.handlers.user.registration_enabled",
-        return_value=False,
+        "friends_bot_service.handlers.user.settings.REGISTRATION_ENABLED",
+        False,
     ):
         with patch(
             "friends_bot_service.handlers.user.run_with_unit_of_work",
@@ -81,7 +89,7 @@ async def test_register_rejects_when_registration_is_disabled():
                 )
                 await register(message, bot, "upd-1")
 
-    message.answer.assert_awaited_once_with("Регистрация игроков временно закрыта.")
+    message.answer.assert_awaited_once_with(PLAYER_REGISTRATION_DISABLED)
 
 
 @pytest.mark.asyncio
@@ -100,7 +108,7 @@ async def test_register_upserts_user_and_answers():
             await register(message, bot, "upd-1")
 
     run_uow.assert_awaited_once()
-    message.answer.assert_awaited_once_with("Ты в игре!")
+    message.answer.assert_awaited_once_with(PLAYER_REGISTERED)
 
 
 @pytest.mark.asyncio
@@ -144,7 +152,7 @@ async def test_unregister_reports_missing_player():
         ):
             await unregister(message, bot, "upd-1")
 
-    message.answer.assert_awaited_once_with("Тебя и так нет в списках игроков.")
+    message.answer.assert_awaited_once_with(PLAYER_ALREADY_NOT_IN_LIST)
 
 
 @pytest.mark.asyncio
@@ -166,7 +174,7 @@ async def test_unregister_reports_already_inactive_player():
         ):
             await unregister(message, bot, "upd-1")
 
-    message.answer.assert_awaited_once_with("Тебя и так нет в списках игроков.")
+    message.answer.assert_awaited_once_with(PLAYER_ALREADY_NOT_IN_LIST)
 
 
 @pytest.mark.asyncio
@@ -188,7 +196,7 @@ async def test_unregister_deactivates_player_and_answers():
         ):
             await unregister(message, bot, "upd-1")
 
-    message.answer.assert_awaited_once_with("Ты вышел из игры. Но мы всё помним... 😉")
+    message.answer.assert_awaited_once_with(PLAYER_UNREGISTERED)
 
 
 @pytest.mark.asyncio
@@ -228,7 +236,7 @@ async def test_list_players_reports_empty_roster():
         ):
             await list_players(message, bot, "upd-1")
 
-    message.answer.assert_awaited_once_with("Никто не зарегистрировался в игре.")
+    message.answer.assert_awaited_once_with(PLAYER_LIST_EMPTY)
 
 
 @pytest.mark.asyncio
@@ -256,5 +264,5 @@ async def test_list_players_formats_registered_users():
             await list_players(message, bot, "upd-1")
 
     message.answer.assert_awaited_once_with(
-        "Участники игры в этом чате:\n1) Alice @alice_u\n2) Bob"
+        PLAYER_LIST_HEADER + "1) Alice @alice_u\n2) Bob"
     )

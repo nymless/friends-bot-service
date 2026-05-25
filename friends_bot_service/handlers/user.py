@@ -3,10 +3,20 @@ import logging
 from aiogram import Bot, Router, types
 from aiogram.filters import Command
 
-from friends_bot_service.bootstrap.dependencies import (
-    registration_enabled,
+from friends_bot_service.bootstrap.db import (
+    DatabaseUnavailableError,
     run_with_unit_of_work,
 )
+from friends_bot_service.core.config import settings
+from friends_bot_service.texts.player_text import (
+    PLAYER_ALREADY_NOT_IN_LIST,
+    PLAYER_LIST_EMPTY,
+    PLAYER_LIST_HEADER,
+    PLAYER_REGISTERED,
+    PLAYER_REGISTRATION_DISABLED,
+    PLAYER_UNREGISTERED,
+)
+from friends_bot_service.texts.system import DB_UNAVAILABLE_MESSAGE
 from friends_bot_service.usecases.user import (
     ListPlayers,
     ListPlayersCommand,
@@ -40,7 +50,7 @@ async def register(
             username=message.from_user.username if message.from_user else None,
             full_name=message.from_user.full_name if message.from_user else "",
         )
-        result = await RegisterPlayer(registration_enabled()).execute(
+        result = await RegisterPlayer(settings.REGISTRATION_ENABLED).execute(
             command, uow.users
         )
 
@@ -55,14 +65,17 @@ async def register(
                 f"Handler [upd={update_id}] [command=reg] "
                 "[details=registration_disabled]"
             )
-            await message.answer("Регистрация игроков временно закрыта.")
+            await message.answer(PLAYER_REGISTRATION_DISABLED)
             return
 
         await uow.commit()
         logger.info(f"Handler [upd={update_id}] [command=reg] [details=user_activated]")
-        await message.answer("Ты в игре!")
+        await message.answer(PLAYER_REGISTERED)
 
-    await run_with_unit_of_work(_run, message=message)
+    try:
+        await run_with_unit_of_work(_run)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 async def unregister(
@@ -91,23 +104,26 @@ async def unregister(
                 f"Handler [upd={update_id}] [command=delete] "
                 "[details=db_user_not_found]"
             )
-            await message.answer("Тебя и так нет в списках игроков.")
+            await message.answer(PLAYER_ALREADY_NOT_IN_LIST)
             return
 
         if result.outcome == UnregisterPlayerOutcome.ALREADY_INACTIVE:
             logger.info(
                 f"Handler [upd={update_id}] [command=delete] [details=already_inactive]"
             )
-            await message.answer("Тебя и так нет в списках игроков.")
+            await message.answer(PLAYER_ALREADY_NOT_IN_LIST)
             return
 
         await uow.commit()
         logger.info(
             f"Handler [upd={update_id}] [command=delete] [details=user_deactivated]"
         )
-        await message.answer("Ты вышел из игры. Но мы всё помним... 😉")
+        await message.answer(PLAYER_UNREGISTERED)
 
-    await run_with_unit_of_work(_run, message=message)
+    try:
+        await run_with_unit_of_work(_run)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 async def list_players(
@@ -136,7 +152,7 @@ async def list_players(
         )
 
         if result.outcome == ListPlayersOutcome.EMPTY:
-            await message.answer("Никто не зарегистрировался в игре.")
+            await message.answer(PLAYER_LIST_EMPTY)
             return
 
         lines = []
@@ -146,9 +162,12 @@ async def list_players(
             else:
                 lines.append(f"{i}) {player.full_name}")
 
-        await message.answer("Участники игры в этом чате:\n" + "\n".join(lines))
+        await message.answer(PLAYER_LIST_HEADER + "\n".join(lines))
 
-    await run_with_unit_of_work(_run, message=message)
+    try:
+        await run_with_unit_of_work(_run)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 def get_router() -> Router:

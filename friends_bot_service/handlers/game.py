@@ -5,8 +5,17 @@ from aiogram import Bot, Router, types
 from aiogram.filters.command import Command
 from aiogram.utils.chat_action import ChatActionSender
 
-from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
+from friends_bot_service.bootstrap.db import (
+    DatabaseUnavailableError,
+    run_with_unit_of_work,
+)
 from friends_bot_service.domain import GameType
+from friends_bot_service.texts.player_text import (
+    DRAW_ALREADY_PLAYED,
+    DRAW_NO_PLAYERS,
+    PLAYER_NOT_IN_LIST,
+)
+from friends_bot_service.texts.system import DB_UNAVAILABLE_MESSAGE
 from friends_bot_service.usecases.game import (
     PrepareDraw,
     PrepareDrawCommand,
@@ -40,7 +49,7 @@ async def _run_draw(
         )
         return
 
-    async def _prepare(uow) -> PrepareDrawResult | None:
+    async def _prepare(uow) -> PrepareDrawResult:
         await _touch_bot_game_attempt.execute(bot.id, uow.bots)
         await uow.commit()
 
@@ -52,8 +61,10 @@ async def _run_draw(
         )
         return await _prepare_draw.execute(command, uow.users, uow.games)
 
-    draw = await run_with_unit_of_work(_prepare, message=message)
-    if draw is None:
+    try:
+        draw = await run_with_unit_of_work(_prepare)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
         return
 
     logger.info(
@@ -62,15 +73,15 @@ async def _run_draw(
     )
 
     if draw.outcome == PrepareDrawOutcome.NOT_REGISTERED:
-        await message.answer("Тебя нет в списках игроков.")
+        await message.answer(PLAYER_NOT_IN_LIST)
         return
 
     if draw.outcome == PrepareDrawOutcome.ALREADY_PLAYED:
-        await message.answer("Сегодня выбор уже сделан!")
+        await message.answer(DRAW_ALREADY_PLAYED)
         return
 
     if draw.outcome == PrepareDrawOutcome.NO_PLAYERS:
-        await message.answer("Никто не зарегистрировался!")
+        await message.answer(DRAW_NO_PLAYERS)
         return
 
     if draw.outcome != PrepareDrawOutcome.READY:
@@ -104,7 +115,10 @@ async def _run_draw(
         )
         await uow.commit()
 
-    await run_with_unit_of_work(_persist, message=message)
+    try:
+        await run_with_unit_of_work(_persist)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
 
 
 async def start_winner_game(

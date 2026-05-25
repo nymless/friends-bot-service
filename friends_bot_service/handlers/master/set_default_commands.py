@@ -1,8 +1,27 @@
 from aiogram import F, types
 from aiogram.filters import Command
 
-from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
+from friends_bot_service.bootstrap.db import (
+    DatabaseUnavailableError,
+    run_with_unit_of_work,
+)
 from friends_bot_service.domain import RegisteredBot
+from friends_bot_service.texts.master_text import (
+    CALLBACK_BOT_NOT_OWNED,
+    CALLBACK_INVALID_BOT,
+    CALLBACK_USER_NOT_FOUND,
+    CHOOSE_BOT_FOR_COMMAND_SYNC,
+    COMMANDS_UPDATE_FAILED,
+    COMMANDS_UPDATED_ALL,
+    NO_BOTS_FOR_COMMAND_SYNC,
+    NO_BOTS_FOR_COMMAND_SYNC_ALERT,
+    commands_bulk_failure,
+    commands_updated_for_bot,
+)
+from friends_bot_service.texts.system import (
+    DB_UNAVAILABLE_ALERT,
+    DB_UNAVAILABLE_MESSAGE,
+)
 from friends_bot_service.usecases.bot_admin import (
     GetOwnerBot,
     GetOwnerBotCommand,
@@ -54,14 +73,14 @@ async def set_default_commands(
         )
         return list(result.bots)
 
-    db_bots = await run_with_unit_of_work(_load, message=message)
-    if db_bots is None:
+    try:
+        db_bots = await run_with_unit_of_work(_load)
+    except DatabaseUnavailableError:
+        await message.answer(DB_UNAVAILABLE_MESSAGE)
         return
 
     if not db_bots:
-        await message.answer(
-            "У тебя пока нет подключённых ботов для обновления команд."
-        )
+        await message.answer(NO_BOTS_FOR_COMMAND_SYNC)
         return
 
     if len(db_bots) == 1:
@@ -83,7 +102,7 @@ async def set_default_commands(
     )
 
     await message.answer(
-        "Выбери бота, для которого нужно обновить команды, или обнови их у всех.",
+        CHOOSE_BOT_FOR_COMMAND_SYNC,
         reply_markup=build_set_default_commands_keyboard(db_bots),
     )
 
@@ -102,14 +121,14 @@ async def _sync_one_bot(
             "[command=set_default_commands] [details=single_sync_failed] "
             f"[bot_id={registered_bot.bot_id}]"
         )
-        await message.answer("Не удалось обновить команды. Попробуй позже.")
+        await message.answer(COMMANDS_UPDATE_FAILED)
         return
 
     if success:
-        await message.answer(f"Команды для {get_bot_name(registered_bot)} обновлены.")
+        await message.answer(commands_updated_for_bot(get_bot_name(registered_bot)))
         return
 
-    await message.answer("Не удалось обновить команды. Попробуй позже.")
+    await message.answer(COMMANDS_UPDATE_FAILED)
 
 
 @router.callback_query(F.data.startswith(SET_DEFAULT_COMMANDS_BOT_PREFIX))
@@ -124,7 +143,7 @@ async def set_default_commands_for_selected_bot(
             f"Handler [upd={update_id}] "
             "[command=set_default_commands] [details=callback_user_not_found]"
         )
-        await callback.answer("Не удалось определить пользователя.", show_alert=True)
+        await callback.answer(CALLBACK_USER_NOT_FOUND, show_alert=True)
         return
 
     try:
@@ -135,7 +154,7 @@ async def set_default_commands_for_selected_bot(
             "[command=set_default_commands] [details=invalid_callback_data] "
             f"[callback_data={callback.data}]"
         )
-        await callback.answer("Некорректный бот.", show_alert=True)
+        await callback.answer(CALLBACK_INVALID_BOT, show_alert=True)
         return
 
     async def _load(uow):
@@ -144,14 +163,10 @@ async def set_default_commands_for_selected_bot(
             uow.bots,
         )
 
-    async def _on_db_unavailable() -> None:
-        await callback.answer("Сервис временно недоступен.", show_alert=True)
-
-    owner_bot_result = await run_with_unit_of_work(
-        _load,
-        on_db_unavailable=_on_db_unavailable,
-    )
-    if owner_bot_result is None:
+    try:
+        owner_bot_result = await run_with_unit_of_work(_load)
+    except DatabaseUnavailableError:
+        await callback.answer(DB_UNAVAILABLE_ALERT, show_alert=True)
         return
 
     if owner_bot_result.outcome == GetOwnerBotOutcome.NOT_FOUND:
@@ -160,7 +175,7 @@ async def set_default_commands_for_selected_bot(
             "[command=set_default_commands] [details=bot_not_owned] "
             f"[bot_id={bot_id}]"
         )
-        await callback.answer("Этот бот недоступен для управления.", show_alert=True)
+        await callback.answer(CALLBACK_BOT_NOT_OWNED, show_alert=True)
         return
 
     registered_bot = owner_bot_result.bot
@@ -181,10 +196,7 @@ async def set_default_commands_for_selected_bot(
             f"[bot_id={registered_bot.bot_id}]"
         )
         await callback.answer()
-        await edit_callback_message(
-            callback,
-            "Не удалось обновить команды. Попробуй позже.",
-        )
+        await edit_callback_message(callback, COMMANDS_UPDATE_FAILED)
         return
 
     await callback.answer()
@@ -192,14 +204,11 @@ async def set_default_commands_for_selected_bot(
     if success:
         await edit_callback_message(
             callback,
-            f"Команды для {get_bot_name(registered_bot)} обновлены.",
+            commands_updated_for_bot(get_bot_name(registered_bot)),
         )
         return
 
-    await edit_callback_message(
-        callback,
-        "Не удалось обновить команды. Попробуй позже.",
-    )
+    await edit_callback_message(callback, COMMANDS_UPDATE_FAILED)
 
 
 @router.callback_query(F.data == SET_DEFAULT_COMMANDS_ALL_CALLBACK)
@@ -214,7 +223,7 @@ async def set_default_commands_for_all_bots(
             f"Handler [upd={update_id}] "
             "[command=set_default_commands] [details=callback_user_not_found]"
         )
-        await callback.answer("Не удалось определить пользователя.", show_alert=True)
+        await callback.answer(CALLBACK_USER_NOT_FOUND, show_alert=True)
         return
 
     async def _load(uow):
@@ -224,24 +233,14 @@ async def set_default_commands_for_all_bots(
         )
         return list(result.bots)
 
-    async def _on_db_unavailable_bulk() -> None:
-        await callback.answer("Сервис временно недоступен.", show_alert=True)
-
-    db_bots = await run_with_unit_of_work(
-        _load,
-        message=callback.message
-        if isinstance(callback.message, types.Message)
-        else None,
-        on_db_unavailable=_on_db_unavailable_bulk,
-    )
-    if db_bots is None:
+    try:
+        db_bots = await run_with_unit_of_work(_load)
+    except DatabaseUnavailableError:
+        await callback.answer(DB_UNAVAILABLE_ALERT, show_alert=True)
         return
 
     if not db_bots:
-        await callback.answer(
-            "У тебя нет подключённых ботов для обновления команд.",
-            show_alert=True,
-        )
+        await callback.answer(NO_BOTS_FOR_COMMAND_SYNC_ALERT, show_alert=True)
         return
 
     failed_bot_names: list[str] = []
@@ -277,10 +276,7 @@ async def set_default_commands_for_all_bots(
     await callback.answer()
 
     if not failed_bot_names:
-        await edit_callback_message(callback, "Команды обновлены у всех ботов.")
+        await edit_callback_message(callback, COMMANDS_UPDATED_ALL)
         return
 
-    await edit_callback_message(
-        callback,
-        "Не удалось обновить команды для:\n- " + "\n- ".join(failed_bot_names),
-    )
+    await edit_callback_message(callback, commands_bulk_failure(failed_bot_names))
