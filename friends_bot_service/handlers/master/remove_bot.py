@@ -3,16 +3,23 @@ from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
 from aiogram.filters import Command, CommandObject
 
 from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
-from friends_bot_service.bot_manager.base import BotManager
+from friends_bot_service.usecases.bot_admin import (
+    RemoveBot,
+    RemoveBotCommand,
+    RemoveBotOutcome,
+)
+from friends_bot_service.usecases.ports import BotRuntimePort
 
 from .common import logger, router, try_delete_token_message
+
+_remove_bot = RemoveBot()
 
 
 @router.message(Command("remove_bot"))
 async def handle_remove_bot(
     message: types.Message,
     command: CommandObject,
-    manager: BotManager,
+    manager: BotRuntimePort,
     update_id: str | None = None,
 ):
     """Disconnects a bot: /remove_bot <token from @BotFather>."""
@@ -72,21 +79,21 @@ async def handle_remove_bot(
         owner_id = message.from_user.id
 
         async def _deactivate(uow):
-            deactivated = await uow.bots.deactivate_for_owner(
-                bot_id=bot_info.id,
-                owner_id=owner_id,
+            result = await _remove_bot.execute(
+                RemoveBotCommand(bot_id=bot_info.id, owner_id=owner_id),
+                uow.bots,
             )
-            if not deactivated:
+            if result.outcome != RemoveBotOutcome.SUCCESS:
                 await uow.rollback()
-                return False
+                return result
             await uow.commit()
-            return True
+            return result
 
-        deactivated = await run_with_unit_of_work(_deactivate, message=message)
-        if deactivated is None:
+        deactivate_result = await run_with_unit_of_work(_deactivate, message=message)
+        if deactivate_result is None:
             return
 
-        if not deactivated:
+        if deactivate_result.outcome == RemoveBotOutcome.NOT_FOUND:
             await message.answer(
                 "Не получилось отключить бота. Проверьте токен и что он был "
                 "подключён с этого Telegram-аккаунта."

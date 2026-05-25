@@ -1,3 +1,5 @@
+from typing import cast
+
 from aiogram import Bot, types
 from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
 from aiogram.filters import Command, CommandObject
@@ -6,17 +8,24 @@ from friends_bot_service.bootstrap.dependencies import (
     registration_enabled,
     run_with_unit_of_work,
 )
-from friends_bot_service.bot_manager.base import BotManager
-from friends_bot_service.core.security import encrypt_token
+from friends_bot_service.infrastructure import default_token_cipher
+from friends_bot_service.usecases.bot_admin import (
+    RegisterBot,
+    RegisterBotCommand,
+    RegisterBotOutcome,
+)
+from friends_bot_service.usecases.ports import BotRuntimePort
 
 from .common import logger, router, sync_default_commands, try_delete_token_message
+
+_cipher = default_token_cipher()
 
 
 @router.message(Command("add_bot"))
 async def handle_add_bot(
     message: types.Message,
     command: CommandObject,
-    manager: BotManager,
+    manager: BotRuntimePort,
     update_id: str | None = None,
 ):
     """Registers a bot: /add_bot <token from @BotFather>."""
@@ -80,7 +89,6 @@ async def handle_add_bot(
             await message.answer("❌ Ошибка: не удалось верифицировать токен.")
             return
 
-        encrypted = encrypt_token(token)
         bot_username = bot_info.username
         if bot_username is None:
             logger.error(
@@ -91,22 +99,35 @@ async def handle_add_bot(
             return
 
         owner_id = message.from_user.id
+        register_bot = RegisterBot(registration_enabled())
 
         async def _persist(uow):
-            await uow.bots.upsert(
-                bot_id=bot_info.id,
-                username=bot_username,
-                encrypted_token=encrypted,
-                owner_id=owner_id,
+            result = await register_bot.execute(
+                RegisterBotCommand(
+                    bot_id=bot_info.id,
+                    username=bot_username,
+                    encrypted_token=_cipher.encrypt(token),
+                    owner_id=owner_id,
+                ),
+                uow.bots,
             )
+            if result.outcome != RegisterBotOutcome.SUCCESS:
+                await uow.rollback()
+                return result
             await uow.commit()
-            return True
+            return result
 
-        if await run_with_unit_of_work(_persist, message=message) is not True:
+        persist_result = await run_with_unit_of_work(_persist, message=message)
+        if persist_result is None:
+            return
+        if persist_result.outcome == RegisterBotOutcome.REGISTRATION_DISABLED:
+            await message.answer("Регистрация ботов временно закрыта.")
+            return
+        if persist_result.outcome != RegisterBotOutcome.SUCCESS:
             return
 
-        bot = await manager.start_bot(token)
-        commands_synced = await sync_default_commands(bot, bot_info.id)
+        started_bot = cast(Bot, await manager.start_bot(token))
+        commands_synced = await sync_default_commands(started_bot, bot_info.id)
 
         logger.info(
             f"Handler [upd={update_id}] [command=add_bot] [details=bot_registered] "

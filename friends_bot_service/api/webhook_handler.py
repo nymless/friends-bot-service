@@ -5,7 +5,7 @@ from aiogram import Dispatcher
 from aiogram.types import Update
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 
-from friends_bot_service.bot_manager.base import BotManager
+from friends_bot_service.usecases.ports import BotRuntimePort
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def handle_telegram_update(
     """Handles a Telegram update."""
 
     dp: Dispatcher = request.app.state.dp
-    manager: BotManager = request.app.state.manager
+    manager: BotRuntimePort = request.app.state.manager
     expected_secret: str | None = request.app.state.webhook_secret_token
     received_secret = request.headers.get(WEBHOOK_SECRET_HEADER)
 

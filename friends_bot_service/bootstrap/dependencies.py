@@ -1,3 +1,9 @@
+"""
+Handler DB boundary: use run_with_unit_of_work (opens unit_of_work + user-facing DB errors).
+
+Bootstrap/scripts without a chat message: async with unit_of_work() as uow.
+"""
+
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -20,9 +26,11 @@ async def run_with_unit_of_work(
     callback: Callable[[SqlAlchemyUnitOfWork], Awaitable[_T]],
     *,
     message: types.Message | None = None,
+    on_db_unavailable: Callable[[], Awaitable[None]] | None = None,
 ) -> _T | None:
     """
-    Opens one unit of work per call and maps database errors to a user message.
+    Opens one unit of work per call and maps database errors to a user message
+    or a custom callback (for example callback.answer on master flows).
     """
 
     try:
@@ -35,6 +43,8 @@ async def run_with_unit_of_work(
         logging.getLogger(__name__).exception("DATABASE_OFFLINE")
         if message is not None:
             await message.answer("⚠️ Сервис временно недоступен. Попробуйте позже.")
+        elif on_db_unavailable is not None:
+            await on_db_unavailable()
         return None
 
 

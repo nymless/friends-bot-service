@@ -12,10 +12,13 @@ from friends_bot_service.bootstrap.dependencies import unit_of_work
 from friends_bot_service.bot_manager import factory as manager_factory
 from friends_bot_service.bot_manager.base import BotManager
 from friends_bot_service.core.config import settings
-from friends_bot_service.core.security import decrypt_token
 from friends_bot_service.enums.enums import BotMode
+from friends_bot_service.infrastructure import default_token_cipher
+from friends_bot_service.usecases.bot_admin import LoadActiveBots
 
 logger = logging.getLogger(__name__)
+
+_load_active_bots = LoadActiveBots(default_token_cipher())
 
 
 class PackagePathFilter(logging.Filter):
@@ -79,19 +82,9 @@ async def load_registered_bots(manager: BotManager) -> None:
     """Loads active bots from the database and starts them."""
 
     async with unit_of_work() as uow:
-        bots_to_load = await uow.bots.list_all_active()
+        result = await _load_active_bots.execute(uow.bots, manager)
 
-    logger.info("loading bots count=%s", len(bots_to_load))
-
-    for bot in bots_to_load:
-        token = decrypt_token(bot.encrypted_token)
-        await manager.start_bot(token)
-
-        logger.info(
-            "bot started bot_id=%s username=%s",
-            bot.bot_id,
-            bot.username,
-        )
+    logger.info("loading bots count=%s", result.started_count)
 
 
 async def run_polling() -> None:

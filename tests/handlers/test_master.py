@@ -270,7 +270,7 @@ async def test_handle_add_bot_registers_bot_and_reports_success():
             return_value=FakeTempBot(bot_info=bot_info),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.encrypt_token",
+            "friends_bot_service.handlers.master.add_bot._cipher.encrypt",
             return_value="encrypted-token",
         ) as encrypt_token_mock,
         patch(
@@ -335,7 +335,7 @@ async def test_handle_add_bot_reports_command_sync_failure_after_registration():
             return_value=FakeTempBot(bot_info=bot_info),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.encrypt_token",
+            "friends_bot_service.handlers.master.add_bot._cipher.encrypt",
             return_value="encrypted-token",
         ),
         patch(
@@ -445,10 +445,7 @@ async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
         await handle_remove_bot(message, command, manager, "upd-1")
 
     uow = _last_uow["uow"]
-    uow.bots.deactivate_for_owner.assert_awaited_once_with(
-        bot_id=999,
-        owner_id=20,
-    )
+    uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
     uow.rollback.assert_awaited_once()
     manager.stop_bot.assert_not_awaited()
     message.answer.assert_awaited_once_with(
@@ -495,10 +492,7 @@ async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
         await handle_remove_bot(message, command, manager, "upd-1")
 
     uow = _last_uow["uow"]
-    uow.bots.deactivate_for_owner.assert_awaited_once_with(
-        bot_id=999,
-        owner_id=20,
-    )
+    uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
     uow.commit.assert_awaited_once()
     manager.stop_bot.assert_awaited_once_with(999)
     message.answer.assert_awaited_once_with("Бот @owned_bot отключён от сервиса.")
@@ -760,16 +754,15 @@ async def test_set_default_commands_for_selected_bot_rejects_unavailable_bot():
     # Prepare a callback pointing to an inaccessible bot.
     callback = build_callback(user_id=20, data="set_default_commands:bot:1")
 
-    uow = AsyncMock()
-    uow.bots = AsyncMock()
-    uow.bots.get_active_for_owner = AsyncMock(return_value=None)
-    uow_context = AsyncMock()
-    uow_context.__aenter__ = AsyncMock(return_value=uow)
-    uow_context.__aexit__ = AsyncMock(return_value=None)
+    async def capture_no_owner_bot(callback, *, message=None, on_db_unavailable=None):
+        uow = AsyncMock()
+        uow.bots = AsyncMock()
+        uow.bots.get_active_for_owner = AsyncMock(return_value=None)
+        return await callback(uow)
 
     with patch(
-        "friends_bot_service.handlers.master.set_default_commands.unit_of_work",
-        return_value=uow_context,
+        "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+        new=AsyncMock(side_effect=capture_no_owner_bot),
     ):
         await set_default_commands_for_selected_bot(callback, "upd-1")
 
@@ -799,15 +792,16 @@ async def test_set_default_commands_for_selected_bot_edits_success_message():
 
     uow = AsyncMock()
     uow.bots = AsyncMock()
-    uow.bots.get_active_for_owner = AsyncMock(return_value=registered_bot)
-    uow_context = AsyncMock()
-    uow_context.__aenter__ = AsyncMock(return_value=uow)
-    uow_context.__aexit__ = AsyncMock(return_value=None)
+    async def capture_owner_bot(callback, *, message=None, on_db_unavailable=None):
+        uow = AsyncMock()
+        uow.bots = AsyncMock()
+        uow.bots.get_active_for_owner = AsyncMock(return_value=registered_bot)
+        return await callback(uow)
 
     with (
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.unit_of_work",
-            return_value=uow_context,
+            "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+            new=AsyncMock(side_effect=capture_owner_bot),
         ),
         patch(
             "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",

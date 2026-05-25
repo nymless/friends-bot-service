@@ -1,12 +1,15 @@
 from aiogram import F, types
 from aiogram.filters import Command
-from sqlalchemy.exc import InterfaceError, SQLAlchemyError
 
-from friends_bot_service.bootstrap.dependencies import (
-    run_with_unit_of_work,
-    unit_of_work,
-)
+from friends_bot_service.bootstrap.dependencies import run_with_unit_of_work
 from friends_bot_service.domain import RegisteredBot
+from friends_bot_service.usecases.bot_admin import (
+    GetOwnerBot,
+    GetOwnerBotCommand,
+    GetOwnerBotOutcome,
+    ListOwnerBots,
+    ListOwnerBotsCommand,
+)
 
 from .common import (
     SET_DEFAULT_COMMANDS_ALL_CALLBACK,
@@ -18,6 +21,9 @@ from .common import (
     router,
     sync_commands_for_bot,
 )
+
+_list_owner_bots = ListOwnerBots()
+_get_owner_bot = GetOwnerBot()
 
 
 @router.message(Command("set_default_commands"))
@@ -42,7 +48,11 @@ async def set_default_commands(
     )
 
     async def _load(uow):
-        return list(await uow.bots.list_active_for_owner(owner_id))
+        result = await _list_owner_bots.execute(
+            ListOwnerBotsCommand(owner_id=owner_id),
+            uow.bots,
+        )
+        return list(result.bots)
 
     db_bots = await run_with_unit_of_work(_load, message=message)
     if db_bots is None:
@@ -128,18 +138,23 @@ async def set_default_commands_for_selected_bot(
         await callback.answer("Некорректный бот.", show_alert=True)
         return
 
-    try:
-        async with unit_of_work() as uow:
-            registered_bot = await uow.bots.get_active_for_owner(
-                callback.from_user.id,
-                bot_id,
-            )
-    except (InterfaceError, ConnectionError, SQLAlchemyError):
-        logger.exception("DATABASE_OFFLINE")
+    async def _load(uow):
+        return await _get_owner_bot.execute(
+            GetOwnerBotCommand(owner_id=callback.from_user.id, bot_id=bot_id),
+            uow.bots,
+        )
+
+    async def _on_db_unavailable() -> None:
         await callback.answer("Сервис временно недоступен.", show_alert=True)
+
+    owner_bot_result = await run_with_unit_of_work(
+        _load,
+        on_db_unavailable=_on_db_unavailable,
+    )
+    if owner_bot_result is None:
         return
 
-    if registered_bot is None:
+    if owner_bot_result.outcome == GetOwnerBotOutcome.NOT_FOUND:
         logger.warning(
             f"Handler [upd={update_id}] "
             "[command=set_default_commands] [details=bot_not_owned] "
@@ -147,6 +162,9 @@ async def set_default_commands_for_selected_bot(
         )
         await callback.answer("Этот бот недоступен для управления.", show_alert=True)
         return
+
+    registered_bot = owner_bot_result.bot
+    assert registered_bot is not None
 
     logger.info(
         f"Handler [upd={update_id}] "
@@ -200,13 +218,21 @@ async def set_default_commands_for_all_bots(
         return
 
     async def _load(uow):
-        return list(await uow.bots.list_active_for_owner(callback.from_user.id))
+        result = await _list_owner_bots.execute(
+            ListOwnerBotsCommand(owner_id=callback.from_user.id),
+            uow.bots,
+        )
+        return list(result.bots)
+
+    async def _on_db_unavailable_bulk() -> None:
+        await callback.answer("Сервис временно недоступен.", show_alert=True)
 
     db_bots = await run_with_unit_of_work(
         _load,
         message=callback.message
         if isinstance(callback.message, types.Message)
         else None,
+        on_db_unavailable=_on_db_unavailable_bulk,
     )
     if db_bots is None:
         return
