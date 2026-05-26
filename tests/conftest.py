@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from friends_bot_service.core import lock as lock_module
-from friends_bot_service.models.base_model import Base
+from friends_bot_service.infra.core import lock as lock_module
+from friends_bot_service.infra.models.base_model import Base
 
 
 @pytest.fixture

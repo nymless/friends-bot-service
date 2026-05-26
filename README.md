@@ -23,7 +23,7 @@ idea here was reworked as a multi-bot service built on a modern Python stack.
 - Keeps bot tokens encrypted in the database.
 - Deletes bot token messages from the master bot chat after processing.
 - Can sync the default command list for connected bots.
-- Includes a maintenance script for disabling stale bots.
+- Includes a maintenance script for disabling stale bots (`make deactivate_inactive_bots`).
 
 ## How It Is Structured
 
@@ -32,8 +32,32 @@ idea here was reworked as a multi-bot service built on a modern Python stack.
   - `/add_bot`
   - `/remove_bot`
   - `/set_default_commands`
-- **Database** stores registered bots, players, and statistics.
+- **Database** stores registered bots, draw entrants, and draw statistics.
 - **Bot manager** starts and stops connected bots from the database.
+
+## Project Layout
+
+The codebase is split into feature modules. Each feature usually has `domain/`,
+`interfaces/` (ports), `usecases/`, and `handlers/` (thin aiogram adapters).
+Infrastructure lives under `infra/`.
+
+```text
+friends_bot_service/
+  bot_admin/      registered bots: domain, ports, use cases
+  draw/           daily draw flow and game-bot draw commands
+  draw_entrant/   /reg, /delete, /list
+  draw_stats/     /stats, /loserstats
+  master_bot/     master-bot handlers and orchestration use cases
+  infra/          bootstrap, SQLAlchemy repos, bot manager, FastAPI webhook, texts
+```
+
+Runtime wiring (dispatchers, `UnitOfWork`, polling/webhook bootstrap) is in
+`infra/bootstrap/`. SQLAlchemy models and repositories implement the feature
+ports. User-facing strings are in `infra/texts/`.
+
+Database tables still use legacy names from the first schema: `players` for draw
+entrants and `stats` for draw statistics. ORM models are named
+`DrawEntrantORM` and `DrawStatsORM`.
 
 ## Stack
 
@@ -106,9 +130,12 @@ Main launcher:
 make run
 ```
 
-`make run` starts the service according to `BOT_MODE`.
+`make run` starts the service according to `BOT_MODE`:
 
-The repository also includes a direct FastAPI entry point:
+- `polling` — long polling for the master bot and all connected game bots
+- `webhook` — FastAPI app for game-bot updates; the master bot still polls
+
+The repository also includes a direct FastAPI entry point (webhook mode only):
 
 ```bash
 make run_api
@@ -134,7 +161,7 @@ These commands are available in connected game bots:
 
 - `/reg` — join the game
 - `/delete` — leave the game while keeping history
-- `/list` — show registered players in this chat
+- `/list` — show registered draw entrants in this chat
 - `/run` — run the winner draw
 - `/loser` — run the loser draw
 - `/stats` — show winner statistics
@@ -161,10 +188,11 @@ These commands are available in connected game bots:
 ## Development
 
 ```bash
-make test
-make type
-make lint
-make format
+make test      # pytest (handlers, repositories, use cases, infra)
+make type      # mypy
+make lint      # ruff check
+make format    # ruff format + ruff check --fix
+make check     # test, format, lint, type
 ```
 
 ## Notes
@@ -173,5 +201,5 @@ make format
   draws for the same bot/chat/day.
 - Registered bots are loaded from the database on startup.
 - Bot inactivity cleanup is based on `last_game_attempt_at`, or `created_at` if the
-  bot has never been used.
-- The project currently documents polling mode as the primary runtime path.
+  bot has never been used. Run `make deactivate_inactive_bots` to deactivate bots
+  inactive for 60 days.

@@ -5,11 +5,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.models.bot_models import RegisteredBot
-from friends_bot_service.repositories.sqlalchemy import (
+from friends_bot_service.infra.models.bot_models import RegisteredBot
+from friends_bot_service.infra.repositories.sqlalchemy import (
     bot_repository as bot_repository_module,
 )
-from friends_bot_service.repositories.sqlalchemy.bot_repository import (
+from friends_bot_service.infra.repositories.sqlalchemy.bot_repository import (
     SqlAlchemyBotRepository,
 )
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from friends_bot_service.middlewares.update_id import UpdateIdMiddleware
+from friends_bot_service.infra.middlewares.update_id import UpdateIdMiddleware
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_update_id_middleware_injects_update_id() -> None:
     result = await middleware(handler, event, data)
 
     assert result == "ok"
-    assert data["update_id"] == 99
+    assert data["update_id"] == "99"
     handler.assert_awaited_once_with(event, data)
 
 

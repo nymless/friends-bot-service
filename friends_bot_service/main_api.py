@@ -7,7 +7,10 @@ or another deployment-specific process.
 
 import uvicorn
 
-from friends_bot_service.bootstrap.runtime import create_webhook_app, setup_logging
+from friends_bot_service.infra.bootstrap.runtime import (
+    create_webhook_app,
+    setup_logging,
+)
 
 setup_logging()
 app = create_webhook_app()

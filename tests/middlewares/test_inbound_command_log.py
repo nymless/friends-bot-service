@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from friends_bot_service.middlewares.inbound_command_log import (
+from friends_bot_service.infra.middlewares.inbound_command_log import (
     InboundCommandLogMiddleware,
     redact_command_text_for_log,
 )

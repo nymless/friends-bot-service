@@ -1,0 +1,10 @@
+DRAW_ENTRANT_REGISTRATION_DISABLED = "Регистрация игроков временно закрыта."
+DRAW_ENTRANT_REGISTERED = "Ты в игре!"
+DRAW_ENTRANT_NOT_IN_LIST = "Тебя нет в списках игроков."
+DRAW_ENTRANT_ALREADY_NOT_IN_LIST = "Тебя и так нет в списках игроков."
+DRAW_ENTRANT_UNREGISTERED = "Ты вышел из игры. Но мы всё помним... 😉"
+DRAW_ENTRANT_LIST_EMPTY = "Никто не зарегистрировался в игре."
+DRAW_ENTRANT_LIST_HEADER = "Участники игры в этом чате:\n"
+
+DRAW_ALREADY_PLAYED = "Сегодня выбор уже сделан!"
+DRAW_NO_PLAYERS = "Никто не зарегистрировался!"

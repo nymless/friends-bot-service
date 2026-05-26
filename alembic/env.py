@@ -8,9 +8,12 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from friends_bot_service.models.base_model import Base
-from friends_bot_service.models.bot_models import RegisteredBot  # noqa: F401
-from friends_bot_service.models.game_models import GameStats, Player  # noqa: F401
+from friends_bot_service.infra.models.base_model import Base
+from friends_bot_service.infra.models.bot_models import RegisteredBot  # noqa: F401
+from friends_bot_service.infra.models.draw_models import (  # noqa: F401
+    DrawEntrantORM,
+    DrawStatsORM,
+)
 
 load_dotenv()
 database_url = os.getenv("DB_URL")

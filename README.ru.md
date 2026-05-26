@@ -23,7 +23,7 @@ English version: [README.md](README.md).
 - Хранит токены ботов в зашифрованном виде в базе данных.
 - Удаляет сообщения с токенами из чата мастер-бота после обработки.
 - Может обновлять список команд по умолчанию у подключённых ботов.
-- Включает maintenance-скрипт для отключения давно неиспользуемых ботов.
+- Включает maintenance-скрипт для отключения давно неиспользуемых ботов (`make deactivate_inactive_bots`).
 
 ## Как это устроено
 
@@ -32,8 +32,31 @@ English version: [README.md](README.md).
   - `/add_bot`
   - `/remove_bot`
   - `/set_default_commands`
-- **База данных** хранит зарегистрированных ботов, игроков и статистику.
+- **База данных** хранит зарегистрированных ботов, участников розыгрышей и статистику.
 - **Менеджер ботов** запускает и останавливает подключённых ботов из базы.
+
+## Структура проекта
+
+Код разбит на feature-модули. У каждого обычно есть `domain/`, `interfaces/`
+(порты), `usecases/` и `handlers/` (тонкие aiogram-адаптеры). Инфраструктура —
+в `infra/`.
+
+```text
+friends_bot_service/
+  bot_admin/      зарегистрированные боты: domain, ports, use cases
+  draw/           розыгрыш и игровые команды /run, /loser
+  draw_entrant/   /reg, /delete, /list
+  draw_stats/     /stats, /loserstats
+  master_bot/     хендлеры мастер-бота и orchestration use cases
+  infra/          bootstrap, SQLAlchemy repos, bot manager, FastAPI webhook, texts
+```
+
+Сборка рантайма (dispatchers, `UnitOfWork`, polling/webhook) — в
+`infra/bootstrap/`. SQLAlchemy-модели и репозитории реализуют порты feature-модулей.
+Тексты для пользователя — в `infra/texts/`.
+
+В базе пока legacy-имена таблиц из первой схемы: `players` для участников
+розыгрыша и `stats` для статистики. В ORM это `DrawEntrantORM` и `DrawStatsORM`.
 
 ## Стек
 
@@ -106,9 +129,12 @@ uv run alembic upgrade head
 make run
 ```
 
-`make run` запускает сервис в соответствии со значением `BOT_MODE`.
+`make run` запускает сервис в соответствии со значением `BOT_MODE`:
 
-В репозитории также есть прямой FastAPI entry point:
+- `polling` — long polling для мастер-бота и всех подключённых игровых ботов
+- `webhook` — FastAPI-приложение для апдейтов игровых ботов; мастер-бот всё равно на polling
+
+В репозитории также есть прямой FastAPI entry point (только webhook-режим):
 
 ```bash
 make run_api
@@ -135,7 +161,7 @@ Nginx.
 
 - `/reg` — вступить в игру
 - `/delete` — выйти из игры с сохранением истории
-- `/list` — кто зарегистрирован в игре в этом чате
+- `/list` — кто участвует в розыгрыше в этом чате
 - `/run` — запустить розыгрыш победителя
 - `/loser` — запустить розыгрыш проигравшего
 - `/stats` — показать статистику победителей
@@ -161,10 +187,11 @@ Nginx.
 ## Разработка
 
 ```bash
-make test
-make type
-make lint
-make format
+make test      # pytest (handlers, repositories, use cases, infra)
+make type      # mypy
+make lint      # ruff check
+make format    # ruff format + ruff check --fix
+make check     # test, format, lint, type
 ```
 
 ## Примечания
@@ -173,5 +200,5 @@ make format
   вероятность повторного розыгрыша для одного и того же бота, чата и дня.
 - Зарегистрированные боты загружаются из базы при старте приложения.
 - Очистка неактивных ботов опирается на `last_game_attempt_at`, а если бот ещё
-  ни разу не использовался — на `created_at`.
-- В текущем README polling описан как основной режим запуска.
+  ни разу не использовался — на `created_at`. Запуск: `make deactivate_inactive_bots`
+  (60 дней без активности).

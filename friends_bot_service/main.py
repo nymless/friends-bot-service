@@ -4,13 +4,13 @@ import sys
 
 import uvicorn
 
-from friends_bot_service.bootstrap.runtime import (
+from friends_bot_service.infra.bootstrap.runtime import (
     create_webhook_app,
     run_polling,
     setup_logging,
 )
-from friends_bot_service.core.config import settings
-from friends_bot_service.enums.enums import BotMode
+from friends_bot_service.infra.core.config import settings
+from friends_bot_service.infra.enums.enums import BotMode
 
 logger = logging.getLogger(__name__)
 

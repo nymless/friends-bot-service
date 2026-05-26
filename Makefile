@@ -17,7 +17,7 @@ run_api: ## Start the FastAPI app directly
 	uv run python -m friends_bot_service.main_api
 
 deactivate_inactive_bots: ## Deactivate bots inactive for 60 days
-	uv run python -m friends_bot_service.scripts.deactivate_inactive_bots
+	uv run python -m friends_bot_service.infra.scripts.deactivate_inactive_bots
 
 test: ## Run tests
 	uv run pytest

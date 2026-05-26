@@ -2,21 +2,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from aiogram.exceptions import TelegramUnauthorizedError
 
-from friends_bot_service.handlers.master.add_bot import handle_add_bot
-from friends_bot_service.handlers.master.common import (
-    build_set_default_commands_keyboard,
-    edit_callback_message,
-    get_bot_name,
-)
-from friends_bot_service.handlers.master.remove_bot import handle_remove_bot
-from friends_bot_service.handlers.master.set_default_commands import (
-    set_default_commands,
-    set_default_commands_for_all_bots,
-    set_default_commands_for_selected_bot,
-)
-from friends_bot_service.texts.master_text import (
+from friends_bot_service.bot_admin import usecases as admin_usecases
+from friends_bot_service.infra.texts.master_text import (
     BOT_REGISTRATION_DISABLED,
     CALLBACK_BOT_NOT_OWNED,
     CALLBACK_INVALID_BOT,
@@ -30,7 +18,26 @@ from friends_bot_service.texts.master_text import (
     commands_updated_for_bot,
     token_command_usage,
 )
-from friends_bot_service.texts.system import INVALID_BOT_TOKEN
+from friends_bot_service.infra.texts.system_text import INVALID_BOT_TOKEN
+from friends_bot_service.master_bot import usecases
+from friends_bot_service.master_bot.handlers.add_bot import add_bot
+from friends_bot_service.master_bot.handlers.common import (
+    build_set_default_commands_keyboard,
+    edit_callback_message,
+    get_bot_name,
+)
+from friends_bot_service.master_bot.handlers.remove_bot import remove_bot
+from friends_bot_service.master_bot.handlers.set_default_commands import (
+    set_default_commands,
+)
+from friends_bot_service.master_bot.handlers.set_default_commands_all import (
+    set_default_commands_for_all_bots,
+)
+from friends_bot_service.master_bot.handlers.set_default_commands_selected import (
+    set_default_commands_for_selected_bot,
+)
+from friends_bot_service.master_bot.usecases.add_bot import AddBotOutcome, AddBotResult
+from friends_bot_service.master_bot.usecases.verify_bot_token import VerifiedBotInfo
 from tests.helpers.uow import invoke_run_with_unit_of_work
 
 _last_uow: dict[str, AsyncMock] = {}
@@ -83,25 +90,6 @@ def build_message(*, user_id: int | None = 20) -> AsyncMock:
     return message
 
 
-class FakeTempBot:
-    """Minimal async context manager used to fake Bot(token) in master tests."""
-
-    def __init__(self, *, bot_info=None, get_me_exception: Exception | None = None):
-        self._bot_info = bot_info
-        self._get_me_exception = get_me_exception
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb):
-        return None
-
-    async def get_me(self):
-        if self._get_me_exception is not None:
-            raise self._get_me_exception
-        return self._bot_info
-
-
 def build_registered_bot(bot_id: int, username: str):
     """Builds a lightweight registered bot object for tests."""
 
@@ -131,7 +119,7 @@ async def test_add_bot_shows_usage_when_token_missing():
     manager = AsyncMock()
     command = build_command_args(None)
 
-    await handle_add_bot(message, command, manager, "upd-1")
+    await add_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(token_command_usage("add_bot"))
 
@@ -148,10 +136,10 @@ async def test_add_bot_rejects_when_registration_is_disabled_without_token():
     command = build_command_args(None)
 
     with patch(
-        "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+        "friends_bot_service.master_bot.handlers.add_bot.settings.REGISTRATION_ENABLED",
         False,
     ):
-        await handle_add_bot(message, command, manager, "upd-1")
+        await add_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(BOT_REGISTRATION_DISABLED)
 
@@ -169,22 +157,18 @@ async def test_add_bot_rejects_when_registration_disabled_deletes_token_message(
 
     with (
         patch(
-            "friends_bot_service.handlers.master.add_bot.settings.REGISTRATION_ENABLED",
+            "friends_bot_service.master_bot.handlers.add_bot.settings.REGISTRATION_ENABLED",
             False,
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.add_bot.try_delete_token_message",
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_add_bot(message, command, manager, "upd-1")
+        await add_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(BOT_REGISTRATION_DISABLED)
-    try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="add_bot",
-    )
+    try_delete_token_message_mock.assert_awaited_once_with(message, "upd-1", "add_bot")
 
 
 @pytest.mark.asyncio
@@ -195,13 +179,13 @@ async def test_remove_bot_shows_usage_when_token_missing():
     manager = AsyncMock()
     command = build_command_args(None)
 
-    await handle_remove_bot(message, command, manager, "upd-1")
+    await remove_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(token_command_usage("remove_bot"))
 
 
 @pytest.mark.asyncio
-async def test_handle_add_bot_rejects_invalid_token_and_deletes_message():
+async def test_add_bot_rejects_invalid_token_and_deletes_message():
     """
     Verify add-bot handling for an invalid token.
 
@@ -221,37 +205,30 @@ async def test_handle_add_bot_rejects_invalid_token_and_deletes_message():
 
     with (
         patch(
-            "friends_bot_service.handlers.master.add_bot.Bot",
-            return_value=FakeTempBot(
-                get_me_exception=TelegramUnauthorizedError(
-                    method=SimpleNamespace(__api_method__="getMe"),
-                    message="unauthorized",
-                )
+            "friends_bot_service.master_bot.handlers.add_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.INVALID_TOKEN, None)
             ),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.add_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_uow_callback),
         ) as run_uow,
         patch(
-            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.add_bot.try_delete_token_message",
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_add_bot(message, command, manager, "upd-1")
+        await add_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(INVALID_BOT_TOKEN)
     run_uow.assert_not_awaited()
     manager.start_bot.assert_not_awaited()
-    try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="add_bot",
-    )
+    try_delete_token_message_mock.assert_awaited_once_with(message, "upd-1", "add_bot")
 
 
 @pytest.mark.asyncio
-async def test_handle_add_bot_registers_bot_and_reports_success():
+async def test_add_bot_registers_bot_and_reports_success():
     """
     Verify successful add-bot token handling.
 
@@ -270,55 +247,43 @@ async def test_handle_add_bot_registers_bot_and_reports_success():
     message = build_message(user_id=20)
     command = build_command_args(" 123:valid-token ")
     manager = AsyncMock()
-    manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
-    bot_info = SimpleNamespace(id=999, username="new_bot")
+    verified = VerifiedBotInfo(bot_id=999, username="new_bot")
 
     with (
         patch(
-            "friends_bot_service.handlers.master.add_bot.Bot",
-            return_value=FakeTempBot(bot_info=bot_info),
+            "friends_bot_service.master_bot.handlers.add_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.SUCCESS, verified)
+            ),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot._cipher.encrypt",
-            return_value="encrypted-token",
-        ) as encrypt_token_mock,
+            "friends_bot_service.master_bot.handlers.add_bot._add_bot.persist",
+            new=AsyncMock(return_value=admin_usecases.RegisterBotOutcome.SUCCESS),
+        ) as persist_mock,
         patch(
-            "friends_bot_service.handlers.master.add_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.add_bot._add_bot.activate",
+            new=AsyncMock(return_value=AddBotResult(outcome=AddBotOutcome.SUCCESS)),
+        ) as activate_mock,
+        patch(
+            "friends_bot_service.master_bot.handlers.add_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_uow_callback),
         ) as run_uow,
         patch(
-            "friends_bot_service.handlers.master.add_bot.sync_default_commands",
-            new=AsyncMock(return_value=True),
-        ) as sync_default_commands_mock,
-        patch(
-            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.add_bot.try_delete_token_message",
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_add_bot(message, command, manager, "upd-1")
+        await add_bot(message, command, manager, "upd-1")
 
-    encrypt_token_mock.assert_called_once_with("123:valid-token")
+    persist_mock.assert_awaited_once()
     run_uow.assert_awaited_once()
-    uow = _last_uow["uow"]
-    uow.bots.upsert.assert_awaited_once_with(
-        bot_id=999,
-        username="new_bot",
-        encrypted_token="encrypted-token",
-        owner_id=20,
-    )
-    uow.commit.assert_awaited_once()
-    manager.start_bot.assert_awaited_once_with("123:valid-token")
-    sync_default_commands_mock.assert_awaited_once()
+    activate_mock.assert_awaited_once()
     message.answer.assert_awaited_once_with(bot_registered_success("new_bot"))
-    try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="add_bot",
-    )
+    try_delete_token_message_mock.assert_awaited_once_with(message, "upd-1", "add_bot")
 
 
 @pytest.mark.asyncio
-async def test_handle_add_bot_reports_command_sync_failure_after_registration():
+async def test_add_bot_reports_command_sync_failure_after_registration():
     """
     Verify add-bot flow when registration succeeds but command sync fails.
 
@@ -335,32 +300,35 @@ async def test_handle_add_bot_reports_command_sync_failure_after_registration():
     message = build_message(user_id=20)
     command = build_command_args("123:valid-token")
     manager = AsyncMock()
-    manager.start_bot = AsyncMock(return_value=SimpleNamespace(id=999))
-    bot_info = SimpleNamespace(id=999, username="new_bot")
+    verified = VerifiedBotInfo(bot_id=999, username="new_bot")
 
     with (
         patch(
-            "friends_bot_service.handlers.master.add_bot.Bot",
-            return_value=FakeTempBot(bot_info=bot_info),
+            "friends_bot_service.master_bot.handlers.add_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.SUCCESS, verified)
+            ),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot._cipher.encrypt",
-            return_value="encrypted-token",
+            "friends_bot_service.master_bot.handlers.add_bot._add_bot.persist",
+            new=AsyncMock(return_value=admin_usecases.RegisterBotOutcome.SUCCESS),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.add_bot._add_bot.activate",
+            new=AsyncMock(
+                return_value=AddBotResult(outcome=AddBotOutcome.COMMANDS_SYNC_FAILED)
+            ),
+        ),
+        patch(
+            "friends_bot_service.master_bot.handlers.add_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_uow_callback),
         ),
         patch(
-            "friends_bot_service.handlers.master.add_bot.sync_default_commands",
-            new=AsyncMock(return_value=False),
-        ),
-        patch(
-            "friends_bot_service.handlers.master.add_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.add_bot.try_delete_token_message",
             new=AsyncMock(),
         ),
     ):
-        await handle_add_bot(message, command, manager, "upd-1")
+        await add_bot(message, command, manager, "upd-1")
 
     # The final answer must keep registration success and mention command sync retry.
     message.answer.assert_awaited_once_with(
@@ -369,7 +337,7 @@ async def test_handle_add_bot_reports_command_sync_failure_after_registration():
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_bot_rejects_invalid_token_and_deletes_message():
+async def test_remove_bot_rejects_invalid_token_and_deletes_message():
     """
     Verify remove-bot handling for an invalid token.
 
@@ -388,37 +356,32 @@ async def test_handle_remove_bot_rejects_invalid_token_and_deletes_message():
 
     with (
         patch(
-            "friends_bot_service.handlers.master.remove_bot.Bot",
-            return_value=FakeTempBot(
-                get_me_exception=TelegramUnauthorizedError(
-                    method=SimpleNamespace(__api_method__="getMe"),
-                    message="unauthorized",
-                )
+            "friends_bot_service.master_bot.handlers.remove_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.INVALID_TOKEN, None)
             ),
         ),
         patch(
-            "friends_bot_service.handlers.master.remove_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.remove_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_uow_callback),
         ) as run_uow,
         patch(
-            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.remove_bot.try_delete_token_message",
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_remove_bot(message, command, manager, "upd-1")
+        await remove_bot(message, command, manager, "upd-1")
 
     message.answer.assert_awaited_once_with(INVALID_BOT_TOKEN)
     manager.stop_bot.assert_not_awaited()
     run_uow.assert_not_awaited()
     try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="remove_bot",
+        message, "upd-1", "remove_bot"
     )
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
+async def test_remove_bot_rolls_back_when_bot_is_not_deactivated():
     """
     Verify remove-bot flow when the bot cannot be deactivated for this owner.
 
@@ -434,23 +397,25 @@ async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
     message = build_message(user_id=20)
     command = build_command_args("123:valid-token")
     manager = AsyncMock()
-    bot_info = SimpleNamespace(id=999, username="owned_bot")
+    verified = VerifiedBotInfo(bot_id=999, username="owned_bot")
 
     with (
         patch(
-            "friends_bot_service.handlers.master.remove_bot.Bot",
-            return_value=FakeTempBot(bot_info=bot_info),
+            "friends_bot_service.master_bot.handlers.remove_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.SUCCESS, verified)
+            ),
         ),
         patch(
-            "friends_bot_service.handlers.master.remove_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.remove_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_remove_bot_not_deactivated),
         ),
         patch(
-            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.remove_bot.try_delete_token_message",
             new=AsyncMock(),
         ),
     ):
-        await handle_remove_bot(message, command, manager, "upd-1")
+        await remove_bot(message, command, manager, "upd-1")
 
     uow = _last_uow["uow"]
     uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
@@ -460,7 +425,7 @@ async def test_handle_remove_bot_rolls_back_when_bot_is_not_deactivated():
 
 
 @pytest.mark.asyncio
-async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
+async def test_remove_bot_deactivates_bot_and_stops_manager():
     """
     Verify successful remove-bot handling.
 
@@ -478,23 +443,25 @@ async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
     message = build_message(user_id=20)
     command = build_command_args("123:valid-token")
     manager = AsyncMock()
-    bot_info = SimpleNamespace(id=999, username="owned_bot")
+    verified = VerifiedBotInfo(bot_id=999, username="owned_bot")
 
     with (
         patch(
-            "friends_bot_service.handlers.master.remove_bot.Bot",
-            return_value=FakeTempBot(bot_info=bot_info),
+            "friends_bot_service.master_bot.handlers.remove_bot.usecases.verify_bot_token",
+            new=AsyncMock(
+                return_value=(usecases.VerifyBotTokenOutcome.SUCCESS, verified)
+            ),
         ),
         patch(
-            "friends_bot_service.handlers.master.remove_bot.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.remove_bot.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_remove_bot_deactivated),
         ),
         patch(
-            "friends_bot_service.handlers.master.remove_bot.try_delete_token_message",
+            "friends_bot_service.master_bot.handlers.remove_bot.try_delete_token_message",
             new=AsyncMock(),
         ) as try_delete_token_message_mock,
     ):
-        await handle_remove_bot(message, command, manager, "upd-1")
+        await remove_bot(message, command, manager, "upd-1")
 
     uow = _last_uow["uow"]
     uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
@@ -502,9 +469,7 @@ async def test_handle_remove_bot_deactivates_bot_and_stops_manager():
     manager.stop_bot.assert_awaited_once_with(999)
     message.answer.assert_awaited_once_with(bot_removed_success("owned_bot"))
     try_delete_token_message_mock.assert_awaited_once_with(
-        message,
-        update_id="upd-1",
-        flow="remove_bot",
+        message, "upd-1", "remove_bot"
     )
 
 
@@ -613,7 +578,7 @@ async def test_set_default_commands_returns_early_when_user_is_missing():
     message = build_message(user_id=None)
 
     with patch(
-        "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+        "friends_bot_service.master_bot.handlers.set_default_commands.db.run_with_unit_of_work",
         new=AsyncMock(side_effect=invoke_run_with_unit_of_work),
     ) as run_uow:
         await set_default_commands(message, "upd-1")
@@ -638,7 +603,7 @@ async def test_set_default_commands_reports_when_owner_has_no_bots():
     message = build_message(user_id=20)
 
     with patch(
-        "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+        "friends_bot_service.master_bot.handlers.set_default_commands.db.run_with_unit_of_work",
         new=AsyncMock(return_value=[]),
     ):
         await set_default_commands(message, "upd-1")
@@ -667,18 +632,18 @@ async def test_set_default_commands_updates_single_bot_immediately():
 
     with (
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.set_default_commands.db.run_with_unit_of_work",
             new=AsyncMock(return_value=[registered_bot]),
         ),
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
+            "friends_bot_service.master_bot.handlers.set_default_commands._sync_commands.sync_registered_bot",
             new=AsyncMock(return_value=True),
-        ) as sync_commands_for_bot,
+        ) as sync_registered_bot,
     ):
         await set_default_commands(message, "upd-1")
 
     # The handler must sync immediately and answer with the success text.
-    sync_commands_for_bot.assert_awaited_once_with(registered_bot)
+    sync_registered_bot.assert_awaited_once_with(registered_bot)
     message.answer.assert_awaited_once_with(commands_updated_for_bot("@single_bot"))
 
 
@@ -703,16 +668,14 @@ async def test_set_default_commands_shows_keyboard_for_multiple_bots():
     ]
 
     with patch(
-        "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+        "friends_bot_service.master_bot.handlers.set_default_commands.db.run_with_unit_of_work",
         new=AsyncMock(return_value=db_bots),
     ):
         await set_default_commands(message, "upd-1")
 
     # The handler must send the selection prompt with an inline keyboard.
     assert message.answer.await_count == 1
-    assert (
-        message.answer.await_args.args[0] == CHOOSE_BOT_FOR_COMMAND_SYNC
-    )
+    assert message.answer.await_args.args[0] == CHOOSE_BOT_FOR_COMMAND_SYNC
     assert message.answer.await_args.kwargs["reply_markup"] is not None
 
 
@@ -763,7 +726,7 @@ async def test_set_default_commands_for_selected_bot_rejects_unavailable_bot():
         return await callback(uow)
 
     with patch(
-        "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+        "friends_bot_service.master_bot.handlers.set_default_commands_selected.db.run_with_unit_of_work",
         new=AsyncMock(side_effect=capture_no_owner_bot),
     ):
         await set_default_commands_for_selected_bot(callback, "upd-1")
@@ -801,15 +764,15 @@ async def test_set_default_commands_for_selected_bot_edits_success_message():
 
     with (
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.set_default_commands_selected.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=capture_owner_bot),
         ),
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
+            "friends_bot_service.master_bot.handlers.set_default_commands_selected._sync_commands.sync_registered_bot",
             new=AsyncMock(return_value=True),
         ),
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.edit_callback_message",
+            "friends_bot_service.master_bot.handlers.set_default_commands_selected.edit_callback_message",
             new=AsyncMock(),
         ) as edit_callback_message_mock,
     ):
@@ -845,15 +808,15 @@ async def test_set_default_commands_for_all_bots_reports_partial_failures():
 
     with (
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.run_with_unit_of_work",
+            "friends_bot_service.master_bot.handlers.set_default_commands_all.db.run_with_unit_of_work",
             new=AsyncMock(return_value=[first_bot, second_bot]),
         ),
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.sync_commands_for_bot",
-            new=AsyncMock(side_effect=[True, False]),
+            "friends_bot_service.master_bot.handlers.set_default_commands_all._sync_commands.sync_all_registered_bots",
+            new=AsyncMock(return_value=["@second_bot"]),
         ),
         patch(
-            "friends_bot_service.handlers.master.set_default_commands.edit_callback_message",
+            "friends_bot_service.master_bot.handlers.set_default_commands_all.edit_callback_message",
             new=AsyncMock(),
         ) as edit_callback_message_mock,
     ):

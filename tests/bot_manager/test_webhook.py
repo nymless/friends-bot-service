@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from friends_bot_service.bot_manager.webhook import WebhookBotManager
+from friends_bot_service.infra.bot_manager.webhook import WebhookBotManager
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_start_bot_sets_webhook_with_secret_token():
 
     # Run startup through the patched aiogram Bot constructor.
     with patch(
-        "friends_bot_service.bot_manager.webhook.Bot",
+        "friends_bot_service.infra.bot_manager.webhook.Bot",
         return_value=fake_bot,
     ):
         bot = await manager.start_bot("321:token")
