@@ -59,6 +59,8 @@ Database tables still use legacy names from the first schema: `players` for draw
 entrants and `stats` for draw statistics. ORM models are named
 `DrawEntrantORM` and `DrawStatsORM`.
 
+Component diagram: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
+
 ## Stack
 
 - Python 3.12+

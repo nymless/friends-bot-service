@@ -58,6 +58,8 @@ friends_bot_service/
 В базе пока legacy-имена таблиц из первой схемы: `players` для участников
 розыгрыша и `stats` для статистики. В ORM это `DrawEntrantORM` и `DrawStatsORM`.
 
+Диаграмма компонентов: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
+
 ## Стек
 
 - Python 3.12+

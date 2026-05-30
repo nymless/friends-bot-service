@@ -6,13 +6,13 @@ import sys
 from aiogram import Bot, Dispatcher
 from fastapi import FastAPI
 
+from friends_bot_service.bot_admin.interfaces import BotRuntimePort
 from friends_bot_service.bot_admin.usecases import LoadActiveBots
 from friends_bot_service.infra.api.app_state import WebhookAppState
 from friends_bot_service.infra.api.webhook_handler import router
 from friends_bot_service.infra.bootstrap import dispatchers
 from friends_bot_service.infra.bootstrap.db import unit_of_work
 from friends_bot_service.infra.bot_manager import factory as manager_factory
-from friends_bot_service.infra.bot_manager.base import BotManager
 from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.enums.enums import BotMode
 from friends_bot_service.infra.security import default_token_cipher
@@ -52,7 +52,7 @@ def create_master_runtime_components() -> tuple[Dispatcher, Bot]:
     return master_dp, master_bot
 
 
-def create_polling_runtime_components() -> tuple[BotManager, Dispatcher, Bot]:
+def create_polling_runtime_components() -> tuple[BotRuntimePort, Dispatcher, Bot]:
     """Builds runtime components for polling mode."""
 
     manager = manager_factory.create_polling_bot_manager(dispatchers.get_bot_dispatcher)
@@ -61,7 +61,7 @@ def create_polling_runtime_components() -> tuple[BotManager, Dispatcher, Bot]:
 
 
 def create_webhook_runtime_components() -> tuple[
-    Dispatcher, BotManager, Dispatcher, Bot
+    Dispatcher, BotRuntimePort, Dispatcher, Bot
 ]:
     """Builds runtime components for webhook mode."""
 
@@ -79,7 +79,7 @@ def create_webhook_runtime_components() -> tuple[
     return dp, manager, master_dp, master_bot
 
 
-async def load_registered_bots(manager: BotManager) -> None:
+async def load_registered_bots(manager: BotRuntimePort) -> None:
     """Loads active bots from the database and starts them."""
 
     async with unit_of_work() as uow:
