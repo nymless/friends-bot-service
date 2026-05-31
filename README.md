@@ -57,7 +57,8 @@ ports. User-facing strings are in `infra/texts/`.
 
 Database tables still use legacy names from the first schema: `players` for draw
 entrants and `stats` for draw statistics. ORM models are named
-`DrawEntrantORM` and `DrawStatsORM`.
+`DrawEntrantORM` and `DrawStatsORM`. See
+[ADR 0001](docs/adr/0001-legacy-database-table-names.md) for the rename plan.
 
 Component diagram: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 

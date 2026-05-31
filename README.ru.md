@@ -57,6 +57,7 @@ friends_bot_service/
 
 В базе пока legacy-имена таблиц из первой схемы: `players` для участников
 розыгрыша и `stats` для статистики. В ORM это `DrawEntrantORM` и `DrawStatsORM`.
+План переименования — [ADR 0001](docs/adr/0001-legacy-database-table-names.md).
 
 Диаграмма компонентов: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 
