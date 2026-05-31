@@ -196,6 +196,8 @@ make type      # mypy
 make lint      # ruff check
 make format    # ruff format + ruff check --fix
 make check     # test, format, lint, type
+make hooks     # install git pre-commit hooks (also runs on make install)
+make pre-commit  # run pre-commit on all files
 ```
 
 ## Notes

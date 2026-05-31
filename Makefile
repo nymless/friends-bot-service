@@ -1,11 +1,18 @@
 .PHONY: help install install_prod run run_api deactivate_inactive_bots test type lint format check clean \
-		db-init db-migrate db-upgrade db-downgrade db-history
+		hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_-]+: ## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 install: ## Install all dependencies (including dev)
 	uv sync
+	uv run pre-commit install
+
+hooks: ## Install git pre-commit hooks
+	uv run pre-commit install
+
+pre-commit: ## Run pre-commit on all files
+	uv run pre-commit run --all-files
 
 install_prod: ## Install production dependencies only
 	uv sync --no-dev
