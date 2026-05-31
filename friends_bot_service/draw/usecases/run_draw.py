@@ -8,7 +8,6 @@ from friends_bot_service.draw.domain import GameType
 from friends_bot_service.draw.interfaces import DrawRepository
 from friends_bot_service.draw_entrant.domain import DrawEntrantKey
 from friends_bot_service.draw_entrant.interfaces import DrawEntrantRepository
-from friends_bot_service.infra.core.lock import get_bot_chat_lock
 from friends_bot_service.infra.texts.game_text import WINNER_MESSAGES
 
 
@@ -52,37 +51,35 @@ class PrepareDraw:
         if participant is None or not participant.is_active:
             return PrepareDrawResult(outcome=PrepareDrawOutcome.NOT_REGISTERED)
 
-        lock = get_bot_chat_lock((data.bot_id, data.chat_id))
-        async with lock:
-            today_utc = datetime.now(timezone.utc).date()
+        today_utc = datetime.now(timezone.utc).date()
 
-            if await draw.has_draw_today(
-                data.bot_id,
-                data.chat_id,
-                data.game_type,
-                today_utc,
-            ):
-                return PrepareDrawResult(outcome=PrepareDrawOutcome.ALREADY_PLAYED)
+        if await draw.has_draw_today(
+            data.bot_id,
+            data.chat_id,
+            data.game_type,
+            today_utc,
+        ):
+            return PrepareDrawResult(outcome=PrepareDrawOutcome.ALREADY_PLAYED)
 
-            eligible = await draw.list_eligible_players(
-                data.bot_id,
-                data.chat_id,
-                today_utc,
-            )
-            if not eligible:
-                return PrepareDrawResult(outcome=PrepareDrawOutcome.NO_PLAYERS)
+        eligible = await draw.list_eligible_players(
+            data.bot_id,
+            data.chat_id,
+            today_utc,
+        )
+        if not eligible:
+            return PrepareDrawResult(outcome=PrepareDrawOutcome.NO_PLAYERS)
 
-            winner = random.choice(list(eligible))
-            steps = WINNER_MESSAGES[data.game_type][:-1]
-            final_step = WINNER_MESSAGES[data.game_type][-1] + winner.full_name
+        winner = random.choice(list(eligible))
+        steps = WINNER_MESSAGES[data.game_type][:-1]
+        final_step = WINNER_MESSAGES[data.game_type][-1] + winner.full_name
 
-            return PrepareDrawResult(
-                outcome=PrepareDrawOutcome.READY,
-                suspense_messages=tuple(steps),
-                final_message=final_step,
-                winner_user_id=winner.user_id,
-                today_utc=today_utc,
-            )
+        return PrepareDrawResult(
+            outcome=PrepareDrawOutcome.READY,
+            suspense_messages=tuple(steps),
+            final_message=final_step,
+            winner_user_id=winner.user_id,
+            today_utc=today_utc,
+        )
 
 
 @dataclass(frozen=True, slots=True)

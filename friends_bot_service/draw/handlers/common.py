@@ -5,6 +5,7 @@ from aiogram.utils.chat_action import ChatActionSender
 
 from friends_bot_service.draw import domain, usecases
 from friends_bot_service.infra.bootstrap import db
+from friends_bot_service.infra.core.lock import get_bot_chat_lock
 from friends_bot_service.infra.repositories.unit_of_work import SqlAlchemyUnitOfWork
 from friends_bot_service.infra.texts import draw_entrant_text as text
 from friends_bot_service.infra.texts import system_text
@@ -23,6 +24,17 @@ async def _run_draw(
     if from_user is None:
         return
 
+    lock = get_bot_chat_lock((bot.id, message.chat.id))
+    async with lock:
+        await _run_draw_locked(message, bot, game_type, from_user)
+
+
+async def _run_draw_locked(
+    message: types.Message,
+    bot: Bot,
+    game_type: domain.GameType,
+    from_user: types.User,
+) -> None:
     async def prepare_draw(uow: SqlAlchemyUnitOfWork) -> usecases.PrepareDrawResult:
         await _touch_bot_game_attempt.execute(bot.id, uow.bots)
         await uow.commit()

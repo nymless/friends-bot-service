@@ -20,6 +20,8 @@ from friends_bot_service.infra.texts.draw_entrant_text import (
 from friends_bot_service.infra.texts.game_text import WINNER_MESSAGES
 from tests.helpers.uow import invoke_run_with_unit_of_work
 
+_real_asyncio_sleep = asyncio.sleep
+
 
 class DummyTypingContext:
     async def __aenter__(self):
@@ -257,50 +259,55 @@ async def test_game_command_starts_game_for_registered_user(handler, game_type):
 
 
 @pytest.mark.asyncio
-async def test_start_game_serializes_parallel_calls_for_same_bot_and_chat():
+async def test_draw_handlers_do_not_overlap_in_same_chat():
+    """Only one draw handler may run per bot/chat at a time (handler-level mutex)."""
     message_one = build_message(chat_id=10, user_id=20)
     message_two = build_message(chat_id=10, user_id=21)
     bot = SimpleNamespace(id=1)
     today = date.today()
-    state = {"has_played": False}
+    steps = WINNER_MESSAGES[domain.GameType.WINNER][:-1]
+    final_step = WINNER_MESSAGES[domain.GameType.WINNER][-1] + "Winner"
+    prepare_result = PrepareDrawResult(
+        outcome=PrepareDrawOutcome.READY,
+        suspense_messages=tuple(steps),
+        final_message=final_step,
+        winner_user_id=777,
+        today_utc=today,
+    )
+    inside_suspense = 0
+    peak_concurrent_handlers = 0
 
-    async def fake_prepare(*args, **kwargs):
-        if state["has_played"]:
-            return PrepareDrawResult(outcome=PrepareDrawOutcome.ALREADY_PLAYED)
-
-        state["has_played"] = True
-        return PrepareDrawResult(
-            outcome=PrepareDrawOutcome.READY,
-            suspense_messages=tuple(WINNER_MESSAGES[domain.GameType.WINNER][:-1]),
-            final_message=WINNER_MESSAGES[domain.GameType.WINNER][-1] + "Winner",
-            winner_user_id=777,
-            today_utc=today,
-        )
+    async def sleep_that_yields(_seconds: float) -> None:
+        nonlocal inside_suspense, peak_concurrent_handlers
+        inside_suspense += 1
+        peak_concurrent_handlers = max(peak_concurrent_handlers, inside_suspense)
+        await _real_asyncio_sleep(0)
+        inside_suspense -= 1
 
     with (
         patch(
             "friends_bot_service.draw.handlers.common.db.run_with_unit_of_work",
             new=AsyncMock(side_effect=invoke_run_with_unit_of_work),
-        ) as run_uow,
+        ),
         patch(
             "friends_bot_service.draw.handlers.common._touch_bot_game_attempt.execute",
             new=AsyncMock(),
         ),
         patch(
             "friends_bot_service.draw.handlers.common._prepare_draw.execute",
-            new=AsyncMock(side_effect=fake_prepare),
-        ) as prepare_execute,
+            new=AsyncMock(return_value=prepare_result),
+        ),
         patch(
             "friends_bot_service.draw.handlers.common._record_draw.execute",
             new=AsyncMock(),
-        ) as record_execute,
+        ),
         patch(
             "friends_bot_service.draw.handlers.common.ChatActionSender.typing",
             return_value=DummyTypingContext(),
         ),
         patch(
             "friends_bot_service.draw.handlers.common.asyncio.sleep",
-            new=AsyncMock(),
+            new=AsyncMock(side_effect=sleep_that_yields),
         ),
     ):
         await asyncio.gather(
@@ -308,13 +315,4 @@ async def test_start_game_serializes_parallel_calls_for_same_bot_and_chat():
             start_winner_draw(message_two, bot, "upd-2"),
         )
 
-    assert prepare_execute.await_count == 2
-    assert record_execute.await_count == 1
-    assert run_uow.await_count == 3
-
-    answers = [
-        call.args[0]
-        for call in message_one.answer.await_args_list
-        + message_two.answer.await_args_list
-    ]
-    assert answers.count(DRAW_ALREADY_PLAYED) == 1
+    assert peak_concurrent_handlers == 1
