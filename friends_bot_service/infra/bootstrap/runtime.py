@@ -12,6 +12,10 @@ from friends_bot_service.infra.api.app_state import WebhookAppState
 from friends_bot_service.infra.api.webhook_handler import router
 from friends_bot_service.infra.bootstrap import dispatchers
 from friends_bot_service.infra.bootstrap.db import unit_of_work
+from friends_bot_service.infra.bootstrap.master_polling import (
+    MasterBotPollingContext,
+    start_master_bot_polling,
+)
 from friends_bot_service.infra.bot_manager import factory as manager_factory
 from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.enums.enums import BotMode
@@ -98,12 +102,13 @@ async def run_polling() -> None:
         sys.exit(1)
 
     manager, master_dp, master_bot = create_polling_runtime_components()
+    master_context = MasterBotPollingContext(manager=manager)
 
     _logger.info("master bot initialized")
     await load_registered_bots(manager)
 
     try:
-        await master_dp.start_polling(master_bot, manager=manager)
+        await start_master_bot_polling(master_dp, master_bot, master_context)
     finally:
         _logger.warning("shutting down application")
 
@@ -125,6 +130,7 @@ def create_webhook_app() -> FastAPI:
             sys.exit(1)
 
         dp, manager, master_dp, master_bot = create_webhook_runtime_components()
+        master_context = MasterBotPollingContext(manager=manager)
 
         webhook_secret_token = settings.WEBHOOK_SECRET_TOKEN
         assert webhook_secret_token is not None
@@ -140,7 +146,9 @@ def create_webhook_app() -> FastAPI:
         _logger.info("master bot initialized")
         await load_registered_bots(manager)
 
-        master_polling_task = asyncio.create_task(master_dp.start_polling(master_bot))
+        master_polling_task = asyncio.create_task(
+            start_master_bot_polling(master_dp, master_bot, master_context)
+        )
 
         _logger.info("master polling started")
 
