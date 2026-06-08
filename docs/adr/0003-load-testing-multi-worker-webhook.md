@@ -1,0 +1,150 @@
+# ADR 0003: Load testing for multi-worker webhook scaling
+
+- **Status:** Proposed
+- **Date:** 2026-06-07
+
+## Context
+
+ADR 0002 compares three webhook multi-process spikes by **architecture and ops**
+(deploy topology, master placement, process count). Code review alone can judge
+layering, correctness, and operability — but **not** whether `WORKER_COUNT > 1`
+improves throughput or latency under realistic load.
+
+After spike 1 (`webhook-pool`), the webhook path resolves each game bot from the
+database (`get_active_by_id`) instead of an in-process registry. Even with
+`WORKER_COUNT=1`, webhook mode therefore does **more database work per update**
+than the previous single-process design with an in-memory cache. Multi-worker adds
+further cost: N separate SQLAlchemy pools, N aiogram dispatchers, and process
+overhead.
+
+Telegram traffic for this service is typically **low to moderate RPS** per bot,
+often sequential per chat. The workload is **I/O-bound** (PostgreSQL, Telegram API).
+A single asyncio worker on one or two cores may already spend most of its time
+waiting — so **additional workers may show no benefit until load is high enough**
+that one process saturates CPU or the event loop.
+
+Without load testing we cannot answer:
+
+- At what RPS does a second worker start to help?
+- When does the benefit become **significant** (e.g. p95 latency improvement)?
+- Does the DB-first webhook design regress single-worker performance vs the old
+  cached registry at typical load?
+- Does the connection budget (`WORKER_COUNT × (pool_size + overflow)`) become the
+  bottleneck before CPU?
+
+Unit and integration tests with in-memory SQLite do **not** substitute: different
+engine, no network latency, no real pool contention.
+
+## Decision
+
+**Treat load testing as a separate, planned step** — not a blocker for accepting
+an architecture spike on code/ops grounds, but **required before production sizing
+decisions** (`WORKER_COUNT`, pool sizes, VPS tier).
+
+### Goals
+
+| Question | How to answer |
+| -------- | ------------- |
+| Multi-worker vs single-worker | Same handler code; vary only `WORKER_COUNT` on identical hardware profile |
+| When gain appears | Ramp RPS; record knee where p95 improves with workers |
+| Cost of DB-first webhook | Baseline: `WORKER_COUNT=1` current spike vs legacy single-process + cache (if branch/tag available) |
+| Correctness under contention | Separate scenario: concurrent `/run` on same `(bot_id, chat_id)` — claim races, not RPS |
+
+### Metrics (record every run)
+
+- **RPS** sustained and peak before errors
+- **p50 / p95 / p99** latency for `POST /webhook/{bot_id}` → 200
+- **Error rate** — 403, 5xx, pool timeouts, `IntegrityError` on claims
+- **CPU %** — application and PostgreSQL
+- **Active DB connections** — observed max vs configured budget
+- **Claim / draw correctness** — no duplicate winners under parallel `/run`
+
+### Test environment
+
+Use **PostgreSQL as in production** (same driver, migrations, async pool). Recommended
+local setup:
+
+```text
+docker compose (load profile)
+  postgres   — cpu/memory limits (e.g. 1 CPU, 512m–1g)
+  app        — webhook mode, cpu/memory limits (e.g. 1–2 CPU, 512m–1g)
+  load tool  — k6 or Locust (host or container)
+```
+
+**Why Docker limits:** a powerful dev PC does not reflect a modest VPS. Cgroup
+limits on **both** app and Postgres approximate constrained production hardware
+and make comparisons **relative** (1 vs 2 workers on the **same** profile)
+reproducible.
+
+**Caveats (accept, do not ignore):**
+
+- Docker Desktop on Windows — networking and I/O differ from Linux VPS; use
+  results for **variant comparison**, not absolute SLA numbers.
+- CPU throttling in cgroups is approximate, not identical to a slow VPS.
+- Flooding `/webhook` without realistic `Update` bodies measures FastAPI only,
+  not full handler + DB + Telegram behaviour.
+
+**Optional validation:** one confirmation run on the **target VPS** before final
+pool/worker sizing.
+
+### Load profiles
+
+1. **Low** — 5–20 RPS, one `bot_id`. Expect **no multi-worker gain**; establishes
+   baseline and possible DB-first regression vs cache.
+2. **Medium** — 50–200 RPS, many `bot_id` values. Stress pool and worker dispatch.
+3. **Peak** — ramp until p95 or error rate degrades; find knee of the curve.
+4. **Heavy handler** — lower RPS but `/run`-like path (claim + suspense); closer to
+   production than bare POST.
+
+Each profile: run `WORKER_COUNT ∈ {1, 2, 4}` (or 2 only if CPU limit is 1) with
+identical seeds (N bots in DB, valid secret token, `alembic upgrade head`).
+
+### Synthetic load tool
+
+Prefer **k6** or **Locust**:
+
+- `POST /webhook/{bot_id}` with valid `X-Telegram-Bot-Api-Secret-Token`
+- Minimal valid Telegram `Update` JSON
+- For end-to-end DB path: full handler, **mock Telegram HTTP** (no real Bot API)
+  unless explicitly testing outbound calls
+
+Document results in a table, e.g.:
+
+| WORKER_COUNT | CPU limit | Max RPS @ p95 < 200ms | p95 @ 50 RPS | DB conn max |
+| ------------ | --------- | --------------------- | ------------ | ----------- |
+| 1            | 1         | …                     | …            | …           |
+| 2            | 1         | …                     | …            | …           |
+
+### Relationship to ADR 0002 spikes
+
+- **Spikes 2 and 3** may be reviewed on **ops/architecture** without a full load
+  matrix for each branch.
+- **Load comparison** runs once on the **chosen** architecture (or on spike 1 if
+  webhook-pool is accepted early), using the same profiles above.
+- Fair cross-spike comparison requires the **same** DB-per-request handler semantics;
+  only topology (workers, master placement) may differ.
+
+### Deliverables (when implemented)
+
+- `docker-compose.load.yml` (or documented compose override) with resource limits
+- k6/Locust script and run checklist
+- Short results section in README or linked doc — expected order of RPS, when
+  `WORKER_COUNT > 1` is worth considering
+
+## Consequences
+
+- Architecture spikes (ADR 0002) can be **Accepted** on correctness and ops without
+  waiting for load infrastructure — but production worker count must cite load
+  results or explicit “low-traffic, 1 worker sufficient” assumption.
+- Expect **single-worker DB-first webhook** to be slightly slower than in-memory
+  registry at low load; that is an acceptable trade for multi-worker correctness.
+- Load tooling is **not** part of CI by default; optional CI job with fixed limits
+  can guard regressions later.
+
+## When to revisit
+
+- Chosen webhook architecture accepted (ADR 0002) → execute load plan and update
+  this ADR to **Accepted** with recorded assumptions.
+- Production traffic exceeds documented RPS assumptions → re-run profiles and adjust
+  `WORKER_COUNT` / pool / VPS tier.
+- Handler path changes materially (caching, fewer DB round-trips) → re-baseline.
