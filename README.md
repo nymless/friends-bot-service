@@ -55,10 +55,6 @@ Runtime wiring (dispatchers, `UnitOfWork`, polling/webhook bootstrap) is in
 `infra/bootstrap/`. SQLAlchemy models and repositories implement the feature
 ports. User-facing strings are in `infra/texts/`.
 
-Database tables are `draw_entrants`, `draw_stats`, and `chat_draw_claims`. ORM models are
-`DrawEntrantORM`, `DrawStatsORM`, and `ChatDrawClaimORM`. See
-[ADR 0001](docs/adr/0001-legacy-database-table-names.md) for table naming history.
-
 Component diagram: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 
 ## Stack

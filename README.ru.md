@@ -55,9 +55,6 @@ friends_bot_service/
 `infra/bootstrap/`. SQLAlchemy-модели и репозитории реализуют порты feature-модулей.
 Тексты для пользователя — в `infra/texts/`.
 
-Таблицы базы: `draw_entrants`, `draw_stats`, `chat_draw_claims`. В ORM —
-`DrawEntrantORM`, `DrawStatsORM`, `ChatDrawClaimORM`. См. [ADR 0001](docs/adr/0001-legacy-database-table-names.md).
-
 Диаграмма компонентов: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 
 ## Стек
