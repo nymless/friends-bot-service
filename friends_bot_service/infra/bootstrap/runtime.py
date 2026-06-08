@@ -1,6 +1,6 @@
-import asyncio
 import contextlib
 import logging
+import os
 import sys
 
 from aiogram import Bot, Dispatcher
@@ -17,7 +17,9 @@ from friends_bot_service.infra.bootstrap.master_polling import (
     start_master_bot_polling,
 )
 from friends_bot_service.infra.bot_manager import factory as manager_factory
+from friends_bot_service.infra.bot_manager.webhook import WebhookBotManager
 from friends_bot_service.infra.core.config import settings
+from friends_bot_service.infra.core.database import log_db_pool_budget
 from friends_bot_service.infra.enums.enums import BotMode
 from friends_bot_service.infra.observability import setup_webhook_observability
 from friends_bot_service.infra.security import default_token_cipher
@@ -33,6 +35,25 @@ class PackagePathFilter(logging.Filter):
         if record.name.startswith(prefix):
             record.name = record.name[len(prefix) :]
         return True
+
+
+def log_worker_cpu_budget(logger: logging.Logger) -> None:
+    """Warns when webhook worker count exceeds available logical CPUs."""
+
+    if settings.BOT_MODE != BotMode.WEBHOOK:
+        return
+
+    cpu_count = os.cpu_count()
+    if cpu_count is None:
+        return
+
+    if settings.WORKER_COUNT > cpu_count:
+        logger.warning(
+            "WORKER_COUNT=%s exceeds logical CPU count=%s; "
+            "oversubscription may hurt latency",
+            settings.WORKER_COUNT,
+            cpu_count,
+        )
 
 
 def setup_logging() -> None:
@@ -97,6 +118,7 @@ async def run_polling() -> None:
     """Runs the application in polling mode."""
 
     _logger.info("starting application mode=%s", settings.BOT_MODE)
+    log_db_pool_budget(_logger)
 
     if settings.BOT_MODE == BotMode.WEBHOOK:
         _logger.critical("invalid mode for polling app, exiting")
@@ -119,19 +141,34 @@ async def run_polling() -> None:
         _logger.info("shutdown completed")
 
 
+async def start_master_bot_webhook(
+    manager: WebhookBotManager,
+    master_bot: Bot,
+) -> None:
+    """Registers the master bot webhook in the shared worker pool."""
+
+    await manager.register_webhook(master_bot)
+    master_user = await master_bot.get_me()
+    _logger.info("master bot webhook registered bot_id=%s", master_user.id)
+
+
 def create_webhook_app() -> FastAPI:
     """Creates the FastAPI application for webhook mode."""
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         _logger.info("starting FastAPI app mode=%s", settings.BOT_MODE)
+        log_db_pool_budget(_logger)
 
         if settings.BOT_MODE == BotMode.POLLING:
             _logger.critical("invalid mode for webhook app, exiting")
             sys.exit(1)
 
         dp, manager, master_dp, master_bot = create_webhook_runtime_components()
-        master_context = MasterBotPollingContext(manager=manager)
+
+        if not isinstance(manager, WebhookBotManager):
+            msg = "webhook mode requires WebhookBotManager"
+            raise TypeError(msg)
 
         webhook_secret_token = settings.WEBHOOK_SECRET_TOKEN
         assert webhook_secret_token is not None
@@ -144,24 +181,16 @@ def create_webhook_app() -> FastAPI:
             master_bot=master_bot,
         )
 
-        _logger.info("master bot initialized")
+        await start_master_bot_webhook(manager, master_bot)
         await load_registered_bots(manager)
-
-        master_polling_task = asyncio.create_task(
-            start_master_bot_polling(master_dp, master_bot, master_context)
-        )
-
-        _logger.info("master polling started")
 
         try:
             yield
         finally:
             _logger.warning("shutting down FastAPI app")
 
-            master_polling_task.cancel()
-
-            with contextlib.suppress(asyncio.CancelledError):
-                await master_polling_task
+            if isinstance(manager, WebhookBotManager):
+                await manager.unregister_webhook(master_bot)
 
             await manager.stop_all()
             await master_bot.session.close()

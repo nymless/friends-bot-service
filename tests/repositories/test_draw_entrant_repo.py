@@ -20,7 +20,7 @@ def users(db_session: AsyncSession) -> SqlAlchemyDrawEntrantRepository:
 
 
 @pytest.mark.asyncio
-async def test_get_db_user_returns_matching_player_and_none_for_missing(
+async def test_get_db_user_returns_matching_draw_entrant_and_none_for_missing(
     db_session: AsyncSession,
     users: SqlAlchemyDrawEntrantRepository,
 ):
@@ -29,16 +29,16 @@ async def test_get_db_user_returns_matching_player_and_none_for_missing(
     )
     await db_session.commit()
 
-    existing_player = await users.get(DrawEntrantKey(1, 10, 100))
-    missing_player = await users.get(DrawEntrantKey(1, 10, 999))
+    existing_draw_entrant = await users.get(DrawEntrantKey(1, 10, 100))
+    missing_draw_entrant = await users.get(DrawEntrantKey(1, 10, 999))
 
-    assert existing_player is not None
-    assert existing_player.user_id == 100
-    assert missing_player is None
+    assert existing_draw_entrant is not None
+    assert existing_draw_entrant.user_id == 100
+    assert missing_draw_entrant is None
 
 
 @pytest.mark.asyncio
-async def test_list_active_players_for_chat_scopes_bot_chat_and_skips_inactive(
+async def test_list_active_draw_entrants_for_chat_scopes_bot_chat_and_skips_inactive(
     db_session: AsyncSession,
     users: SqlAlchemyDrawEntrantRepository,
 ):
@@ -79,14 +79,14 @@ async def test_list_active_players_for_chat_scopes_bot_chat_and_skips_inactive(
 
 
 @pytest.mark.asyncio
-async def test_upsert_db_user_creates_new_player(
+async def test_upsert_db_user_creates_new_draw_entrant(
     db_session: AsyncSession,
     users: SqlAlchemyDrawEntrantRepository,
     patch_sqlite_upsert: Callable[..., None],
 ):
     patch_sqlite_upsert(draw_entrant_repository_module)
 
-    player = await users.upsert_active(
+    draw_entrant = await users.upsert_active(
         DrawEntrant(
             bot_id=1,
             chat_id=10,
@@ -104,15 +104,15 @@ async def test_upsert_db_user_creates_new_player(
             DrawEntrantORM.user_id == 100,
         )
     )
-    players = result.scalars().all()
+    draw_entrants = result.scalars().all()
 
-    assert player.bot_id == 1
-    assert player.chat_id == 10
-    assert player.user_id == 100
-    assert player.username == "first_user"
-    assert player.full_name == "First User"
-    assert player.is_active is True
-    assert len(players) == 1
+    assert draw_entrant.bot_id == 1
+    assert draw_entrant.chat_id == 10
+    assert draw_entrant.user_id == 100
+    assert draw_entrant.username == "first_user"
+    assert draw_entrant.full_name == "First User"
+    assert draw_entrant.is_active is True
+    assert len(draw_entrants) == 1
 
 
 @pytest.mark.asyncio
@@ -123,7 +123,7 @@ async def test_upsert_db_user_preserves_null_username(
 ):
     patch_sqlite_upsert(draw_entrant_repository_module)
 
-    player = await users.upsert_active(
+    draw_entrant = await users.upsert_active(
         DrawEntrant(
             bot_id=1,
             chat_id=10,
@@ -141,15 +141,15 @@ async def test_upsert_db_user_preserves_null_username(
             DrawEntrantORM.user_id == 101,
         )
     )
-    db_player = result.scalar_one()
+    db_draw_entrant = result.scalar_one()
 
-    assert player.username is None
-    assert db_player.username is None
-    assert db_player.full_name == "No Username"
+    assert draw_entrant.username is None
+    assert db_draw_entrant.username is None
+    assert db_draw_entrant.full_name == "No Username"
 
 
 @pytest.mark.asyncio
-async def test_upsert_db_user_updates_existing_player_and_reactivates_it(
+async def test_upsert_db_user_updates_existing_draw_entrant_and_reactivates_it(
     db_session: AsyncSession,
     users: SqlAlchemyDrawEntrantRepository,
     patch_sqlite_upsert: Callable[..., None],
@@ -168,7 +168,7 @@ async def test_upsert_db_user_updates_existing_player_and_reactivates_it(
     )
     await db_session.commit()
 
-    player = await users.upsert_active(
+    draw_entrant = await users.upsert_active(
         DrawEntrant(
             bot_id=1,
             chat_id=10,
@@ -186,12 +186,12 @@ async def test_upsert_db_user_updates_existing_player_and_reactivates_it(
             DrawEntrantORM.user_id == 100,
         )
     )
-    players = result.scalars().all()
+    draw_entrants = result.scalars().all()
 
-    assert player.username == "new_user"
-    assert player.full_name == "New Name"
-    assert player.is_active is True
-    assert len(players) == 1
-    assert players[0].username == "new_user"
-    assert players[0].full_name == "New Name"
-    assert players[0].is_active is True
+    assert draw_entrant.username == "new_user"
+    assert draw_entrant.full_name == "New Name"
+    assert draw_entrant.is_active is True
+    assert len(draw_entrants) == 1
+    assert draw_entrants[0].username == "new_user"
+    assert draw_entrants[0].full_name == "New Name"
+    assert draw_entrants[0].is_active is True

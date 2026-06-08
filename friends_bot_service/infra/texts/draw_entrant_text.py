@@ -7,4 +7,4 @@ DRAW_ENTRANT_LIST_EMPTY = "Никто не зарегистрировался в
 DRAW_ENTRANT_LIST_HEADER = "Участники игры в этом чате:\n"
 
 DRAW_ALREADY_PLAYED = "Сегодня выбор уже сделан!"
-DRAW_NO_PLAYERS = "Никто не зарегистрировался!"
+DRAW_NO_DRAW_ENTRANTS = "Никто не зарегистрировался!"

@@ -1,19 +1,17 @@
 from friends_bot_service.draw.usecases.run_draw import (
-    PrepareDraw,
-    PrepareDrawData,
-    PrepareDrawOutcome,
-    PrepareDrawResult,
-    RecordDraw,
-    RecordDrawData,
-    TouchBotGameAttempt,
+    ClaimDraw,
+    ClaimDrawData,
+    ClaimDrawOutcome,
+    ClaimDrawResult,
+    DrawAlreadyClaimedError,
+    TouchBotDrawAttempt,
 )
 
 __all__ = [
-    "PrepareDraw",
-    "PrepareDrawData",
-    "PrepareDrawOutcome",
-    "PrepareDrawResult",
-    "RecordDraw",
-    "RecordDrawData",
-    "TouchBotGameAttempt",
+    "ClaimDraw",
+    "ClaimDrawData",
+    "ClaimDrawOutcome",
+    "ClaimDrawResult",
+    "DrawAlreadyClaimedError",
+    "TouchBotDrawAttempt",
 ]

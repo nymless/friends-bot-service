@@ -27,11 +27,11 @@ async def start_winner_draw(
     _logger.info(
         "Update id=%s: start %s draw.",
         update_id,
-        domain.GameType.WINNER,
+        domain.DrawType.WINNER,
     )
 
     await _run_draw(
         message,
         bot,
-        domain.GameType.WINNER,
+        domain.DrawType.WINNER,
     )

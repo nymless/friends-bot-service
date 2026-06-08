@@ -88,13 +88,13 @@ async def test_show_winner_statistics_returns_early_when_user_is_missing():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("handler", "game_type"),
+    ("handler", "draw_type"),
     [
-        (show_winner_statistics, domain.GameType.WINNER),
-        (show_loser_statistics, domain.GameType.LOSER),
+        (show_winner_statistics, domain.DrawType.WINNER),
+        (show_loser_statistics, domain.DrawType.LOSER),
     ],
 )
-async def test_stats_commands_delegate_to_show_statistics(handler, game_type):
+async def test_stats_commands_delegate_to_show_statistics(handler, draw_type):
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=30)
 
@@ -115,4 +115,4 @@ async def test_stats_commands_delegate_to_show_statistics(handler, game_type):
     data = show_stats.await_args.args[0]
     assert data.bot_id == 30
     assert data.chat_id == 10
-    assert data.game_type == game_type
+    assert data.draw_type == draw_type

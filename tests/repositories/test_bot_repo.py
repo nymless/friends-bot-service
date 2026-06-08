@@ -161,7 +161,7 @@ async def test_upsert_bot_updates_existing_bot_and_reactivates_it(
 
 
 @pytest.mark.asyncio
-async def test_touch_bot_last_game_attempt_updates_timestamp(
+async def test_touch_bot_last_draw_attempt_updates_timestamp(
     db_session: AsyncSession,
     bots: SqlAlchemyBotRepository,
 ):
@@ -175,7 +175,7 @@ async def test_touch_bot_last_game_attempt_updates_timestamp(
     )
     await db_session.commit()
 
-    await bots.touch_last_game_attempt(999)
+    await bots.touch_last_draw_attempt(999)
     await db_session.commit()
 
     result = await db_session.execute(
@@ -183,7 +183,7 @@ async def test_touch_bot_last_game_attempt_updates_timestamp(
     )
     bot = result.scalar_one()
 
-    assert bot.last_game_attempt_at is not None
+    assert bot.last_draw_attempt_at is not None
 
 
 @pytest.mark.asyncio
@@ -211,7 +211,7 @@ async def test_deactivate_stale_bots_uses_last_attempt_or_created_at(
                 owner_id=100,
                 created_at=now,
                 updated_at=now,
-                last_game_attempt_at=cutoff - timedelta(days=1),
+                last_draw_attempt_at=cutoff - timedelta(days=1),
                 is_active=True,
             ),
             RegisteredBot(
@@ -221,7 +221,7 @@ async def test_deactivate_stale_bots_uses_last_attempt_or_created_at(
                 owner_id=100,
                 created_at=cutoff - timedelta(days=90),
                 updated_at=cutoff - timedelta(days=90),
-                last_game_attempt_at=now,
+                last_draw_attempt_at=now,
                 is_active=True,
             ),
             RegisteredBot(
@@ -332,3 +332,38 @@ async def test_get_active_bot_for_owner_returns_only_matching_active_bot(
     assert matching_bot.bot_id == 1
     assert inactive_bot is None
     assert foreign_bot is None
+
+
+@pytest.mark.asyncio
+async def test_get_active_by_id_returns_only_active_bot(
+    db_session: AsyncSession,
+    bots: SqlAlchemyBotRepository,
+):
+    db_session.add_all(
+        [
+            RegisteredBot(
+                bot_id=1,
+                username="active_bot",
+                encrypted_token="token-1",
+                owner_id=100,
+                is_active=True,
+            ),
+            RegisteredBot(
+                bot_id=2,
+                username="inactive_bot",
+                encrypted_token="token-2",
+                owner_id=100,
+                is_active=False,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    active_bot = await bots.get_active_by_id(1)
+    inactive_bot = await bots.get_active_by_id(2)
+    missing_bot = await bots.get_active_by_id(999)
+
+    assert active_bot is not None
+    assert active_bot.bot_id == 1
+    assert inactive_bot is None
+    assert missing_bot is None

@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from friends_bot_service.draw.domain import GameType
+from friends_bot_service.draw.domain import DrawType
 from friends_bot_service.draw_stats.domain import StatLine
 from friends_bot_service.infra.models.draw_models import DrawEntrantORM, DrawStatsORM
 
@@ -16,11 +16,11 @@ class SqlAlchemyDrawStatsRepository:
         self,
         bot_id: int,
         chat_id: int,
-        game_type: GameType,
+        draw_type: DrawType,
     ) -> Sequence[StatLine]:
         sort_column = (
             DrawStatsORM.win_count
-            if game_type == GameType.WINNER
+            if draw_type == DrawType.WINNER
             else DrawStatsORM.lose_count
         )
 

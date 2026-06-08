@@ -19,9 +19,9 @@ from friends_bot_service.infra.models.base_model import Base
 
 
 class DrawEntrantORM(Base):
-    """Draw entrant row (legacy table name: ``players``)."""
+    """Draw entrant row."""
 
-    __tablename__ = "players"
+    __tablename__ = "draw_entrants"
 
     bot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -50,9 +50,9 @@ class DrawEntrantORM(Base):
 
 
 class DrawStatsORM(Base):
-    """Per-user draw statistics (legacy table name: ``stats``)."""
+    """Per-draw-entrant statistics."""
 
-    __tablename__ = "stats"
+    __tablename__ = "draw_stats"
 
     bot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -76,6 +76,22 @@ class DrawStatsORM(Base):
         PrimaryKeyConstraint("bot_id", "chat_id", "user_id"),
         UniqueConstraint("bot_id", "chat_id", "last_win", name="uq_bot_chat_win_day"),
         UniqueConstraint("bot_id", "chat_id", "last_lose", name="uq_bot_chat_lose_day"),
-        Index("ix_stats_winner_top", "bot_id", "chat_id", win_count.desc()),
-        Index("ix_stats_loser_top", "bot_id", "chat_id", lose_count.desc()),
+        Index("ix_draw_stats_winner_top", "bot_id", "chat_id", win_count.desc()),
+        Index("ix_draw_stats_loser_top", "bot_id", "chat_id", lose_count.desc()),
+    )
+
+
+class ChatDrawClaimORM(Base):
+    """Atomic daily draw claim for a bot chat and draw type."""
+
+    __tablename__ = "chat_draw_claims"
+
+    bot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    draw_type: Mapped[str] = mapped_column(String, nullable=False)
+    draw_date: Mapped[date] = mapped_column(Date, nullable=False)
+    winner_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        PrimaryKeyConstraint("bot_id", "chat_id", "draw_type", "draw_date"),
     )

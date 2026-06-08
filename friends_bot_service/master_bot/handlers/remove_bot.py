@@ -92,7 +92,7 @@ async def remove_bot(
             await message.answer(master_text.REMOVE_BOT_NOT_FOUND)
             return
 
-        await _remove_bot.stop_runtime(bot_info.bot_id, manager)
+        await _remove_bot.stop_runtime(bot_info.bot_id, manager, token=token)
 
         _logger.info(
             "Update id=%s: bot deactivated; Bot username=%s; Bot id=%s",

@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 
+from aiogram import Bot
+
 from friends_bot_service.bot_admin.interfaces import (
     BotRepository,
     BotRuntimePort,
@@ -29,7 +31,9 @@ class LoadActiveBots:
 
         for registered_bot in bots_to_load:
             token = self._token_cipher.decrypt(registered_bot.encrypted_token)
-            await runtime.start_bot(token)
+            started_bot = await runtime.start_bot(token)
+            if isinstance(started_bot, Bot):
+                await started_bot.session.close()
             started_count += 1
             _logger.info(
                 "Bot started; Bot id=%s; Username=%s",

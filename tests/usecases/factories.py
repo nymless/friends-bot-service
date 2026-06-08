@@ -20,8 +20,8 @@ def draw_entrant(
     bot_id: int = 1,
     chat_id: int = 10,
     user_id: int = 100,
-    username: str | None = "player",
-    full_name: str = "Player Name",
+    username: str | None = "entrant",
+    full_name: str = "Draw Entrant Name",
 ) -> DrawEntrant:
     return DrawEntrant(
         bot_id=bot_id,
@@ -37,8 +37,8 @@ def registered_draw_entrant(
     bot_id: int = 1,
     chat_id: int = 10,
     user_id: int = 100,
-    username: str | None = "player",
-    full_name: str = "Player Name",
+    username: str | None = "entrant",
+    full_name: str = "Draw Entrant Name",
     is_active: bool = True,
 ) -> RegisteredDrawEntrant:
     return RegisteredDrawEntrant(
@@ -54,7 +54,7 @@ def registered_draw_entrant(
 def registered_bot(
     *,
     bot_id: int = 1,
-    username: str = "game_bot",
+    username: str = "draw_bot",
     encrypted_token: str = "enc-token",
     owner_id: int = 20,
     is_active: bool = True,

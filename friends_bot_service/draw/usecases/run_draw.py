@@ -3,45 +3,51 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import StrEnum
 
+from sqlalchemy.exc import IntegrityError
+
 from friends_bot_service.bot_admin.interfaces import BotRepository
-from friends_bot_service.draw.domain import GameType
+from friends_bot_service.draw.domain import DrawType
 from friends_bot_service.draw.interfaces import DrawRepository
 from friends_bot_service.draw_entrant.domain import DrawEntrantKey
 from friends_bot_service.draw_entrant.interfaces import DrawEntrantRepository
-from friends_bot_service.infra.texts.game_text import WINNER_MESSAGES
+from friends_bot_service.infra.texts.draw_text import DRAW_SUSPENSE_MESSAGES
 
 
-class PrepareDrawOutcome(StrEnum):
+class ClaimDrawOutcome(StrEnum):
     ALREADY_PLAYED = "already_played"
-    NO_PLAYERS = "no_players"
+    NO_DRAW_ENTRANTS = "no_draw_entrants"
     READY = "ready"
     NOT_REGISTERED = "not_registered"
 
 
 @dataclass(frozen=True, slots=True)
-class PrepareDrawData:
+class ClaimDrawData:
     bot_id: int
     chat_id: int
     user_id: int
-    game_type: GameType
+    draw_type: DrawType
 
 
 @dataclass(frozen=True, slots=True)
-class PrepareDrawResult:
-    outcome: PrepareDrawOutcome
+class ClaimDrawResult:
+    outcome: ClaimDrawOutcome
     suspense_messages: tuple[str, ...] = ()
     final_message: str | None = None
     winner_user_id: int | None = None
     today_utc: date | None = None
 
 
-class PrepareDraw:
+class DrawAlreadyClaimedError(Exception):
+    """Raised when another process already claimed today's draw."""
+
+
+class ClaimDraw:
     async def execute(
         self,
-        data: PrepareDrawData,
+        data: ClaimDrawData,
         draw_entrant: DrawEntrantRepository,
         draw: DrawRepository,
-    ) -> PrepareDrawResult:
+    ) -> ClaimDrawResult:
         key = DrawEntrantKey(
             bot_id=data.bot_id,
             chat_id=data.chat_id,
@@ -49,32 +55,43 @@ class PrepareDraw:
         )
         participant = await draw_entrant.get(key)
         if participant is None or not participant.is_active:
-            return PrepareDrawResult(outcome=PrepareDrawOutcome.NOT_REGISTERED)
+            return ClaimDrawResult(outcome=ClaimDrawOutcome.NOT_REGISTERED)
 
         today_utc = datetime.now(timezone.utc).date()
 
-        if await draw.has_draw_today(
+        if await draw.has_claim_today(
             data.bot_id,
             data.chat_id,
-            data.game_type,
+            data.draw_type,
             today_utc,
         ):
-            return PrepareDrawResult(outcome=PrepareDrawOutcome.ALREADY_PLAYED)
+            return ClaimDrawResult(outcome=ClaimDrawOutcome.ALREADY_PLAYED)
 
-        eligible = await draw.list_eligible_players(
+        eligible = await draw.list_eligible_draw_entrants(
             data.bot_id,
             data.chat_id,
             today_utc,
         )
         if not eligible:
-            return PrepareDrawResult(outcome=PrepareDrawOutcome.NO_PLAYERS)
+            return ClaimDrawResult(outcome=ClaimDrawOutcome.NO_DRAW_ENTRANTS)
 
         winner = random.choice(list(eligible))
-        steps = WINNER_MESSAGES[data.game_type][:-1]
-        final_step = WINNER_MESSAGES[data.game_type][-1] + winner.full_name
+        try:
+            await draw.claim_draw(
+                data.bot_id,
+                data.chat_id,
+                winner.user_id,
+                data.draw_type,
+                today_utc,
+            )
+        except IntegrityError as exc:
+            raise DrawAlreadyClaimedError from exc
 
-        return PrepareDrawResult(
-            outcome=PrepareDrawOutcome.READY,
+        steps = DRAW_SUSPENSE_MESSAGES[data.draw_type][:-1]
+        final_step = DRAW_SUSPENSE_MESSAGES[data.draw_type][-1] + winner.full_name
+
+        return ClaimDrawResult(
+            outcome=ClaimDrawOutcome.READY,
             suspense_messages=tuple(steps),
             final_message=final_step,
             winner_user_id=winner.user_id,
@@ -82,30 +99,6 @@ class PrepareDraw:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class RecordDrawData:
-    bot_id: int
-    chat_id: int
-    winner_user_id: int
-    game_type: GameType
-    today_utc: date
-
-
-class RecordDraw:
-    async def execute(
-        self,
-        data: RecordDrawData,
-        draw: DrawRepository,
-    ) -> None:
-        await draw.record_draw_result(
-            data.bot_id,
-            data.chat_id,
-            data.winner_user_id,
-            data.game_type,
-            data.today_utc,
-        )
-
-
-class TouchBotGameAttempt:
+class TouchBotDrawAttempt:
     async def execute(self, bot_id: int, bot: BotRepository) -> None:
-        await bot.touch_last_game_attempt(bot_id)
+        await bot.touch_last_draw_attempt(bot_id)

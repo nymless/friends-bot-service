@@ -21,7 +21,7 @@ from friends_bot_service.master_bot.handlers.router import (
 
 
 def get_bot_dispatcher() -> Dispatcher:
-    """Creates the dispatcher used by game bots."""
+    """Creates the dispatcher used by draw bots."""
 
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.filter(

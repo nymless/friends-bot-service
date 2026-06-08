@@ -108,7 +108,7 @@ async def test_unregister_returns_early_when_user_is_missing():
 
 
 @pytest.mark.asyncio
-async def test_unregister_reports_missing_player():
+async def test_unregister_reports_missing_draw_entrant():
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=1)
 
@@ -130,7 +130,7 @@ async def test_unregister_reports_missing_player():
 
 
 @pytest.mark.asyncio
-async def test_unregister_reports_already_inactive_player():
+async def test_unregister_reports_already_inactive_draw_entrant():
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=1)
 
@@ -152,7 +152,7 @@ async def test_unregister_reports_already_inactive_player():
 
 
 @pytest.mark.asyncio
-async def test_unregister_deactivates_player_and_answers():
+async def test_unregister_deactivates_draw_entrant_and_answers():
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=1)
 
@@ -174,7 +174,7 @@ async def test_unregister_deactivates_player_and_answers():
 
 
 @pytest.mark.asyncio
-async def test_list_players_returns_early_when_user_is_missing():
+async def test_list_draw_entrants_returns_early_when_user_is_missing():
     message = build_message(user_id=None)
     bot = SimpleNamespace(id=1)
 
@@ -188,7 +188,7 @@ async def test_list_players_returns_early_when_user_is_missing():
 
 
 @pytest.mark.asyncio
-async def test_list_players_reports_empty_roster():
+async def test_list_draw_entrants_reports_empty_roster():
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=1)
 
@@ -210,7 +210,7 @@ async def test_list_players_reports_empty_roster():
 
 
 @pytest.mark.asyncio
-async def test_list_players_formats_registered_users():
+async def test_list_draw_entrants_formats_registered_users():
     message = build_message(chat_id=10, user_id=20)
     bot = SimpleNamespace(id=1)
     draw_entrants = (

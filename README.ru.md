@@ -55,9 +55,8 @@ friends_bot_service/
 `infra/bootstrap/`. SQLAlchemy-модели и репозитории реализуют порты feature-модулей.
 Тексты для пользователя — в `infra/texts/`.
 
-В базе пока legacy-имена таблиц из первой схемы: `players` для участников
-розыгрыша и `stats` для статистики. В ORM это `DrawEntrantORM` и `DrawStatsORM`.
-План переименования — [ADR 0001](docs/adr/0001-legacy-database-table-names.md).
+Таблицы базы: `draw_entrants`, `draw_stats`, `chat_draw_claims`. В ORM —
+`DrawEntrantORM`, `DrawStatsORM`, `ChatDrawClaimORM`. См. [ADR 0001](docs/adr/0001-legacy-database-table-names.md).
 
 Диаграмма компонентов: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 
@@ -83,26 +82,31 @@ friends_bot_service/
 
 ```env
 BOT_MODE=polling
-WEBHOOK_BASE_URL=https://example.com
-WEBHOOK_SECRET_TOKEN=your_webhook_secret_token
-REGISTRATION_ENABLED=true
-MASTER_TOKEN=ваш_токен_мастер_бота
-ENCRYPTION_KEY=ваш_fernet_ключ
+WORKER_COUNT=1
 DB_URL=postgresql+asyncpg://user:password@localhost:port/friends_bot_service
 DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=10
 DB_POOL_RECYCLE=3600
+WEBHOOK_BASE_URL=https://example.com
+WEBHOOK_SECRET_TOKEN=your_webhook_secret_token
+MASTER_TOKEN=your_master_bot_token
+ENCRYPTION_KEY=your_fernet_key
+REGISTRATION_ENABLED=true
+LOG_INBOUND_COMMANDS=false
 ```
 
 Примечания:
 
+- `WORKER_COUNT` — число uvicorn workers в webhook-режиме (по умолчанию `1`). У
+  каждого worker свой пул SQLAlchemy; см.
+  [Бюджет соединений с БД](#бюджет-соединений-с-бд).
 - `MASTER_TOKEN` — токен приватного управляющего бота.
 - `WEBHOOK_BASE_URL` обязателен в режиме webhook и должен указывать на публичный базовый URL сервиса.
 - `WEBHOOK_SECRET_TOKEN` обязателен в режиме webhook и используется для проверки, что запросы действительно приходят от Telegram.
-- `REGISTRATION_ENABLED=false` отключает и `/reg`, и `/add_bot`, включая повторные регистрации, до следующего запуска сервиса с включённым флагом.
-- `LOG_INBOUND_COMMANDS=true` пишет access-log входящих команд с `/` до хендлеров.
 - `ENCRYPTION_KEY` должен быть корректным Fernet-ключом.
 - Игровые боты добавляются позже через мастер-бота, а не через `.env`.
+- `REGISTRATION_ENABLED=true` отключает и `/reg`, и `/add_bot`, включая повторные регистрации, до следующего запуска сервиса с включённым флагом.
+- `LOG_INBOUND_COMMANDS=true` пишет access-log входящих команд с `/` до хендлеров.
 
 ## Установка
 
@@ -135,7 +139,7 @@ make run
 `make run` запускает сервис в соответствии со значением `BOT_MODE`:
 
 - `polling` — long polling для мастер-бота и всех подключённых игровых ботов
-- `webhook` — FastAPI-приложение для апдейтов игровых ботов; мастер-бот всё равно на polling
+- `webhook` — FastAPI-приложение для апдейтов игровых ботов и мастер-бота; `WORKER_COUNT` задаёт число uvicorn workers
 
 В репозитории также есть прямой FastAPI entry point (только webhook-режим):
 
@@ -210,21 +214,41 @@ make pre-commit  # прогнать pre-commit по всем файлам
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — исходы розыгрыша
 - `friends_bot_db_errors_total` — недоступность базы
 
-Локально Prometheus и Grafana (скрейп `host.docker.internal:8000`, пока приложение на хосте):
+Локально Prometheus и Grafana (тот же `PORT`, что у `make run`):
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up
+make monitoring-up PORT=80   # опционально; по умолчанию 8000
 ```
 
 Grafana: http://localhost:3000 (логин по умолчанию `admin` / `admin`).
 
 Метрики хендлеров работают и в polling; `/metrics` — когда запущено FastAPI webhook-приложение.
 
+## Бюджет соединений с БД
+
+У каждого процесса приложения свой пул SQLAlchemy. В webhook-режиме с
+`WORKER_COUNT > 1` uvicorn поднимает отдельный процесс на worker.
+
+```text
+total_max_connections ≈ workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW)
+```
+
+- **Polling:** `workers = 1`.
+- **Webhook:** `workers = WORKER_COUNT`.
+
+Пример: `WORKER_COUNT=2`, `DB_POOL_SIZE=3`, `DB_MAX_OVERFLOW=2` → не больше **10**
+соединений от сервиса. Оставьте запас относительно PostgreSQL `max_connections`
+под миграции, `deactivate_inactive_bots` и админские подключения.
+
+При старте в лог пишется строка `database connection budget` с посчитанным total.
+
 ## Примечания
 
-- Сервис использует in-memory lock и ограничения базы данных, чтобы уменьшить
-  вероятность повторного розыгрыша для одного и того же бота, чата и дня.
+- Повторный розыгрыш в одном боте/чате/дне блокируется таблицей
+  `chat_draw_claims` и ограничениями в базе.
 - Зарегистрированные боты загружаются из базы при старте приложения.
-- Очистка неактивных ботов опирается на `last_game_attempt_at`, а если бот ещё
-  ни разу не использовался — на `created_at`. Запуск: `make deactivate_inactive_bots`
-  (60 дней без активности).
+- `make deactivate_inactive_bots` помечает ботов неактивными в базе после 60
+  дней без использования (`last_draw_attempt_at`, или `created_at`, если бот ещё
+  не использовался). Скрипт **не** останавливает сервис и **не** меняет вебхуки
+  в Telegram. **Перезапустите сервис после скрипта**, чтобы runtime совпал с
+  базой (одинаково в webhook и polling).

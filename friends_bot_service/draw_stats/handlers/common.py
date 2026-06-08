@@ -26,7 +26,7 @@ async def answer_stats(
 async def run_show_stats(
     message: types.Message,
     bot: Bot,
-    game_type: domain.GameType,
+    draw_type: domain.DrawType,
 ) -> None:
     from_user = message.from_user
     assert from_user is not None
@@ -36,7 +36,7 @@ async def run_show_stats(
             bot_id=bot.id,
             chat_id=message.chat.id,
             user_id=from_user.id,
-            game_type=game_type,
+            draw_type=draw_type,
         )
         return await _show_stats.execute(data, uow.draw_stats)
 

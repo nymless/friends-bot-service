@@ -16,7 +16,7 @@ async def list_draw_entrants(
     bot: Bot,
     update_id: str | None = None,
 ):
-    """Lists active registered players for this bot and chat."""
+    """Lists active registered draw entrants for this bot and chat."""
 
     user = message.from_user
 
@@ -39,11 +39,11 @@ async def list_draw_entrants(
             return
 
         lines = []
-        for i, player in enumerate(result.draw_entrants, 1):
-            if player.username:
-                lines.append(f"{i}) {player.full_name} @{player.username}")
+        for i, draw_entrant in enumerate(result.draw_entrants, 1):
+            if draw_entrant.username:
+                lines.append(f"{i}) {draw_entrant.full_name} @{draw_entrant.username}")
             else:
-                lines.append(f"{i}) {player.full_name}")
+                lines.append(f"{i}) {draw_entrant.full_name}")
 
         await message.answer(
             draw_entrant_text.DRAW_ENTRANT_LIST_HEADER + "\n".join(lines)

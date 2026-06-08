@@ -64,10 +64,13 @@ class AddBot:
         runtime: BotRuntimePort,
     ) -> AddBotResult:
         started_bot = cast(Bot, await runtime.start_bot(data.token))
-        commands_synced = await self._commands_sync.sync_runtime_bot(
-            started_bot,
-            data.bot_id,
-        )
+        try:
+            commands_synced = await self._commands_sync.sync_runtime_bot(
+                started_bot,
+                data.bot_id,
+            )
+        finally:
+            await started_bot.session.close()
         if commands_synced:
             return AddBotResult(outcome=AddBotOutcome.SUCCESS)
         return AddBotResult(outcome=AddBotOutcome.COMMANDS_SYNC_FAILED)

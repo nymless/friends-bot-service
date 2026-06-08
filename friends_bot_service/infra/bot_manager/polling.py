@@ -15,8 +15,8 @@ class PollingBotManager(BotManager):
     """Bot manager implementation for polling mode."""
 
     def __init__(self, dispatcher_factory: Callable[[], Dispatcher]):
-        super().__init__()
         self._dispatcher_factory = dispatcher_factory
+        self._active_bots: dict[int, Bot] = {}
         self._dispatchers: dict[int, Dispatcher] = {}
         self._tasks: dict[int, Task] = {}
 
@@ -44,7 +44,7 @@ class PollingBotManager(BotManager):
         bot_user = await bot.get_me()
 
         if bot_user.id in self._tasks:
-            existing_bot = self.get_bot(bot_user.id)
+            existing_bot = self._active_bots.get(bot_user.id)
             await bot.session.close()
             if existing_bot is None:
                 raise RuntimeError(f"bot {bot_user.id} task exists without active bot")
@@ -62,7 +62,13 @@ class PollingBotManager(BotManager):
         self._active_bots[bot_user.id] = bot
         return bot
 
-    async def stop_bot(self, bot_id: int):
+    async def stop_all(self) -> None:
+        """Stops all bots with polling."""
+
+        for bot_id in list(self._active_bots.keys()):
+            await self.stop_bot(bot_id)
+
+    async def stop_bot(self, bot_id: int, *, token: str | None = None):
         """Stops a bot with polling."""
 
         task = self._tasks.get(bot_id)

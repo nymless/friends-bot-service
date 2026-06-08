@@ -74,10 +74,10 @@ async def test_verify_bot_token_returns_success_with_bot_info():
     with patch(
         "friends_bot_service.master_bot.usecases.verify_bot_token.Bot",
         return_value=FakeTempBot(
-            bot_info=SimpleNamespace(id=99, username="game_bot"),
+            bot_info=SimpleNamespace(id=99, username="draw_bot"),
         ),
     ):
         outcome, info = await verify_bot_token("123:token")
 
     assert outcome is VerifyBotTokenOutcome.SUCCESS
-    assert info == VerifiedBotInfo(bot_id=99, username="game_bot")
+    assert info == VerifiedBotInfo(bot_id=99, username="draw_bot")

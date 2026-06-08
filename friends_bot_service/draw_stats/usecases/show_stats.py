@@ -18,7 +18,7 @@ class ShowStatsData:
     bot_id: int
     chat_id: int
     user_id: int | None
-    game_type: domain.GameType
+    draw_type: domain.DrawType
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +40,7 @@ class ShowStats:
         rows = await stats.top_for_chat(
             data.bot_id,
             data.chat_id,
-            data.game_type,
+            data.draw_type,
         )
         if not rows:
             return ShowStatsResult(
@@ -48,7 +48,7 @@ class ShowStats:
                 message=text.STATS_EMPTY_MESSAGE,
             )
 
-        title = text.STATS_MESSAGES[data.game_type]
+        title = text.STATS_MESSAGES[data.draw_type]
         return ShowStatsResult(
             outcome=ShowStatsOutcome.SUCCESS,
             message=title,

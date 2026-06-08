@@ -63,11 +63,11 @@ class SqlAlchemyBotRepository:
         await self._session.flush()
         return result.scalar_one_or_none() is not None
 
-    async def touch_last_game_attempt(self, bot_id: int) -> None:
+    async def touch_last_draw_attempt(self, bot_id: int) -> None:
         stmt = (
             update(RegisteredBotORM)
             .where(RegisteredBotORM.bot_id == bot_id)
-            .values(last_game_attempt_at=func.now(), updated_at=func.now())
+            .values(last_draw_attempt_at=func.now(), updated_at=func.now())
         )
         await self._session.execute(stmt)
         await self._session.flush()
@@ -78,7 +78,7 @@ class SqlAlchemyBotRepository:
             .where(
                 RegisteredBotORM.is_active,
                 func.coalesce(
-                    RegisteredBotORM.last_game_attempt_at,
+                    RegisteredBotORM.last_draw_attempt_at,
                     RegisteredBotORM.created_at,
                 )
                 < cutoff,
@@ -96,6 +96,15 @@ class SqlAlchemyBotRepository:
         return [
             registered_bot_orm_to_registered_bot(orm) for orm in result.scalars().all()
         ]
+
+    async def get_active_by_id(self, bot_id: int) -> RegisteredBot | None:
+        stmt = select(RegisteredBotORM).where(
+            RegisteredBotORM.bot_id == bot_id,
+            RegisteredBotORM.is_active,
+        )
+        result = await self._session.execute(stmt)
+        orm = result.scalar_one_or_none()
+        return registered_bot_orm_to_registered_bot(orm) if orm is not None else None
 
     async def list_active_for_owner(self, owner_id: int) -> Sequence[RegisteredBot]:
         stmt = select(RegisteredBotORM).where(

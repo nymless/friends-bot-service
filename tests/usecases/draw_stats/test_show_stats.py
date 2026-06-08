@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from friends_bot_service.draw.domain import GameType
+from friends_bot_service.draw.domain import DrawType
 from friends_bot_service.draw_stats.domain import StatLine
 from friends_bot_service.draw_stats.usecases.show_stats import (
     ShowStats,
@@ -22,7 +22,7 @@ async def test_show_stats_returns_user_missing_when_user_id_is_none():
             bot_id=1,
             chat_id=10,
             user_id=None,
-            game_type=GameType.WINNER,
+            draw_type=DrawType.WINNER,
         ),
         stats_repo,
     )
@@ -42,7 +42,7 @@ async def test_show_stats_returns_empty_message_when_no_rows():
             bot_id=1,
             chat_id=10,
             user_id=100,
-            game_type=GameType.LOSER,
+            draw_type=DrawType.LOSER,
         ),
         stats_repo,
     )
@@ -63,12 +63,12 @@ async def test_show_stats_returns_title_and_leaderboard_rows():
             bot_id=1,
             chat_id=10,
             user_id=100,
-            game_type=GameType.WINNER,
+            draw_type=DrawType.WINNER,
         ),
         stats_repo,
     )
 
     assert result.outcome is ShowStatsOutcome.SUCCESS
-    assert result.message == stats_text.STATS_MESSAGES[GameType.WINNER]
+    assert result.message == stats_text.STATS_MESSAGES[DrawType.WINNER]
     assert result.lines == rows
-    stats_repo.top_for_chat.assert_awaited_once_with(1, 10, GameType.WINNER)
+    stats_repo.top_for_chat.assert_awaited_once_with(1, 10, DrawType.WINNER)

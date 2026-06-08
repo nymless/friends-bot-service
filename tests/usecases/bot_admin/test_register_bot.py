@@ -15,7 +15,7 @@ async def test_register_bot_upserts_and_returns_success():
     use_case = RegisterBot()
     data = RegisterBotData(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         encrypted_token="encrypted",
         owner_id=20,
     )
@@ -25,7 +25,7 @@ async def test_register_bot_upserts_and_returns_success():
     assert result.outcome is RegisterBotOutcome.SUCCESS
     repo.upsert.assert_awaited_once_with(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         encrypted_token="encrypted",
         owner_id=20,
     )

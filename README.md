@@ -6,7 +6,7 @@ This repository contains a Telegram bot service for daily group draws such as
 "User of the Day" and "Loser of the Day".
 
 The core idea is simple: one private **master bot** acts as the backend for
-multiple separate game bots. At the same time, each connected game bot remains
+multiple separate draw bots. At the same time, each connected draw bot remains
 a full Telegram bot account with its own name, username, and avatar, all of
 which can be changed independently by its owner. That is what makes this a
 multi-bot service rather than a regular single bot.
@@ -18,8 +18,8 @@ idea here was reworked as a multi-bot service built on a modern Python stack.
 ## What It Does
 
 - Runs daily draws in group chats.
-- Stores players and draw statistics per bot and per chat.
-- Lets the owner connect or disable game bots through a master bot.
+- Stores draw entrants and draw statistics per bot and per chat.
+- Lets the owner connect or disable draw bots through a master bot.
 - Keeps bot tokens encrypted in the database.
 - Deletes bot token messages from the master bot chat after processing.
 - Can sync the default command list for connected bots.
@@ -27,7 +27,7 @@ idea here was reworked as a multi-bot service built on a modern Python stack.
 
 ## How It Is Structured
 
-- **Game bots** work in groups and supergroups.
+- **Draw bots** work in groups and supergroups.
 - **Master bot** works in private chat and handles service actions such as:
   - `/add_bot`
   - `/remove_bot`
@@ -44,7 +44,7 @@ Infrastructure lives under `infra/`.
 ```text
 friends_bot_service/
   bot_admin/      registered bots: domain, ports, use cases
-  draw/           daily draw flow and game-bot draw commands
+  draw/           daily draw flow and draw-bot draw commands
   draw_entrant/   /reg, /delete, /list
   draw_stats/     /stats, /loserstats
   master_bot/     master-bot handlers and orchestration use cases
@@ -55,10 +55,9 @@ Runtime wiring (dispatchers, `UnitOfWork`, polling/webhook bootstrap) is in
 `infra/bootstrap/`. SQLAlchemy models and repositories implement the feature
 ports. User-facing strings are in `infra/texts/`.
 
-Database tables still use legacy names from the first schema: `players` for draw
-entrants and `stats` for draw statistics. ORM models are named
-`DrawEntrantORM` and `DrawStatsORM`. See
-[ADR 0001](docs/adr/0001-legacy-database-table-names.md) for the rename plan.
+Database tables are `draw_entrants`, `draw_stats`, and `chat_draw_claims`. ORM models are
+`DrawEntrantORM`, `DrawStatsORM`, and `ChatDrawClaimORM`. See
+[ADR 0001](docs/adr/0001-legacy-database-table-names.md) for table naming history.
 
 Component diagram: [uml/friends-bot.drawio.png](uml/friends-bot.drawio.png).
 
@@ -84,26 +83,31 @@ Create a `.env` file in the project root:
 
 ```env
 BOT_MODE=polling
-WEBHOOK_BASE_URL=https://example.com
-WEBHOOK_SECRET_TOKEN=your_webhook_secret_token
-REGISTRATION_ENABLED=true
-MASTER_TOKEN=your_master_bot_token
-ENCRYPTION_KEY=your_fernet_key
+WORKER_COUNT=1
 DB_URL=postgresql+asyncpg://user:password@localhost:port/friends_bot_service
 DB_POOL_SIZE=5
 DB_MAX_OVERFLOW=10
 DB_POOL_RECYCLE=3600
+WEBHOOK_BASE_URL=https://example.com
+WEBHOOK_SECRET_TOKEN=your_webhook_secret_token
+MASTER_TOKEN=your_master_bot_token
+ENCRYPTION_KEY=your_fernet_key
+REGISTRATION_ENABLED=true
+LOG_INBOUND_COMMANDS=false
 ```
 
 Notes:
 
+- `WORKER_COUNT` — number of uvicorn workers in webhook mode (default `1`). Each
+  worker is a separate process with its own SQLAlchemy pool; see
+  [Database connection budget](#database-connection-budget).
 - `MASTER_TOKEN` is the token of the private control bot.
 - `WEBHOOK_BASE_URL` is required in webhook mode and should point to the public base URL of the service.
 - `WEBHOOK_SECRET_TOKEN` is required in webhook mode and is used to verify that webhook requests really come from Telegram.
-- `REGISTRATION_ENABLED=false` disables both `/reg` and `/add_bot`, including repeated registrations, until the service is restarted with the flag enabled again.
-- `LOG_INBOUND_COMMANDS=true` logs inbound slash-commands before handlers (access log).
 - `ENCRYPTION_KEY` should be a valid Fernet key.
-- Connected game bots are added later through the master bot, not through `.env`.
+- Connected draw bots are added later through the master bot, not through `.env`.
+- `REGISTRATION_ENABLED=true` disables both `/reg` and `/add_bot`, including repeated registrations, until the service is restarted with the flag enabled again.
+- `LOG_INBOUND_COMMANDS=false` logs inbound slash-commands before handlers (access log).
 
 ## Installation
 
@@ -135,8 +139,8 @@ make run
 
 `make run` starts the service according to `BOT_MODE`:
 
-- `polling` — long polling for the master bot and all connected game bots
-- `webhook` — FastAPI app for game-bot updates; the master bot still polls
+- `polling` — long polling for the master bot and all connected draw bots
+- `webhook` — FastAPI app for draw-bot and master-bot updates; `WORKER_COUNT` sets the number of uvicorn workers
 
 The repository also includes a direct FastAPI entry point (webhook mode only):
 
@@ -152,18 +156,18 @@ such as a public HTTPS endpoint, TLS/SSL, and often a reverse proxy like Nginx.
 1. Start the service.
 2. Open the master bot in a private chat.
 3. Send `/add_bot <token>` (token from @BotFather) as one message.
-4. Add the connected game bot to a group.
-5. Use the game commands in that group.
+4. Add the connected draw bot to a group.
+5. Use the draw commands in that group.
 
 When a token is sent to the master bot, the service deletes that message from
 the chat after processing it.
 
-## Game Commands
+## Draw Commands
 
-These commands are available in connected game bots:
+These commands are available in connected draw bots:
 
-- `/reg` — join the game
-- `/delete` — leave the game while keeping history
+- `/reg` — join the draw
+- `/delete` — leave the draw while keeping history
 - `/list` — show registered draw entrants in this chat
 - `/run` — run the winner draw
 - `/loser` — run the loser draw
@@ -185,7 +189,7 @@ These commands are available in connected game bots:
   only; `/add_bot` and `/remove_bot` log the command name only.
 - Webhook mode validates `X-Telegram-Bot-Api-Secret-Token` against
   `WEBHOOK_SECRET_TOKEN`.
-- The database still stores Telegram user/chat ids, display names, and per-chat game
+- The database still stores Telegram user/chat ids, display names, and per-chat draw
   stats — protect `.env`, DB, and logs accordingly.
 
 ## Development
@@ -211,11 +215,10 @@ Key series:
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — draw outcomes
 - `friends_bot_db_errors_total` — database unavailable events
 
-Local Prometheus and Grafana (scrape `host.docker.internal:8000` while the app runs on
-the host):
+Local Prometheus and Grafana (use the same `PORT` as `make run`):
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up
+make monitoring-up PORT=80   # optional; default 8000
 ```
 
 Open Grafana at http://localhost:3000 (default login `admin` / `admin`), add panels
@@ -224,11 +227,31 @@ for the metrics above, or import a dashboard later.
 Handler metrics also apply in polling mode; `/metrics` is available when the FastAPI
 webhook app is running.
 
+## Database connection budget
+
+Each running process creates its own SQLAlchemy pool. In webhook mode with
+`WORKER_COUNT > 1`, uvicorn forks one process per worker.
+
+```text
+total_max_connections ≈ workers × (DB_POOL_SIZE + DB_MAX_OVERFLOW)
+```
+
+- **Polling:** `workers = 1`.
+- **Webhook:** `workers = WORKER_COUNT`.
+
+Example: `WORKER_COUNT=2`, `DB_POOL_SIZE=3`, `DB_MAX_OVERFLOW=2` → at most **10**
+connections from the service. Leave headroom under PostgreSQL `max_connections`
+for migrations, `deactivate_inactive_bots`, and admin tools.
+
+On startup the service logs `database connection budget` with the computed total.
+
 ## Notes
 
-- The service uses an in-memory lock and database constraints to reduce duplicate
-  draws for the same bot/chat/day.
+- Duplicate draws for the same bot/chat/day are prevented by `chat_draw_claims`
+  and database constraints.
 - Registered bots are loaded from the database on startup.
-- Bot inactivity cleanup is based on `last_game_attempt_at`, or `created_at` if the
-  bot has never been used. Run `make deactivate_inactive_bots` to deactivate bots
-  inactive for 60 days.
+- `make deactivate_inactive_bots` marks bots inactive in the database after 60
+  days without use (`last_draw_attempt_at`, or `created_at` if never used). It
+  does not stop the running service or change Telegram webhooks. **Restart the
+  service after the script** so runtime state matches the database (same in
+  webhook and polling modes).

@@ -28,5 +28,11 @@ class RemoveBot:
         )
         return result.outcome
 
-    async def stop_runtime(self, bot_id: int, runtime: BotRuntimePort) -> None:
-        await runtime.stop_bot(bot_id)
+    async def stop_runtime(
+        self,
+        bot_id: int,
+        runtime: BotRuntimePort,
+        *,
+        token: str,
+    ) -> None:
+        await runtime.stop_bot(bot_id, token=token)

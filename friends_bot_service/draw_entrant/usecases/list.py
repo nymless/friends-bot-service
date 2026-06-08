@@ -29,11 +29,14 @@ class ListDrawEntrants:
         draw_entrant: DrawEntrantRepository,
     ) -> ListDrawEntrantsResult:
 
-        players = await draw_entrant.list_active_for_chat(data.bot_id, data.chat_id)
-        if not players:
+        draw_entrants = await draw_entrant.list_active_for_chat(
+            data.bot_id,
+            data.chat_id,
+        )
+        if not draw_entrants:
             return ListDrawEntrantsResult(outcome=ListDrawEntrantsOutcome.NO_ENTRANTS)
 
         return ListDrawEntrantsResult(
             outcome=ListDrawEntrantsOutcome.SUCCESS,
-            draw_entrants=tuple(players),
+            draw_entrants=tuple(draw_entrants),
         )

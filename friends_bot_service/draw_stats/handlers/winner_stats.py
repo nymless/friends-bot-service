@@ -29,4 +29,4 @@ async def show_winner_statistics(
         update_id,
     )
 
-    await run_show_stats(message, bot, domain.GameType.WINNER)
+    await run_show_stats(message, bot, domain.DrawType.WINNER)

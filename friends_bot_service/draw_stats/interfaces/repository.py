@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Protocol
 
-from friends_bot_service.draw.domain import GameType
+from friends_bot_service.draw.domain import DrawType
 from friends_bot_service.draw_stats.domain import StatLine
 
 
@@ -10,5 +10,5 @@ class StatsRepository(Protocol):
         self,
         bot_id: int,
         chat_id: int,
-        game_type: GameType,
+        draw_type: DrawType,
     ) -> Sequence[StatLine]: ...

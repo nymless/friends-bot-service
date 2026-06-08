@@ -19,7 +19,7 @@ async def test_add_bot_persist_encrypts_token_and_registers_bot():
     use_case = AddBot(cipher, commands_sync=commands_sync)
     data = AddBotData(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         token="123:plain",
         owner_id=20,
     )
@@ -29,7 +29,7 @@ async def test_add_bot_persist_encrypts_token_and_registers_bot():
     assert outcome is RegisterBotOutcome.SUCCESS
     repo.upsert.assert_awaited_once_with(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         encrypted_token="enc:123:plain",
         owner_id=20,
     )
@@ -46,7 +46,7 @@ async def test_add_bot_activate_returns_success_when_commands_sync_succeeds():
     use_case = AddBot(cipher, commands_sync=commands_sync)
     data = AddBotData(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         token="123:plain",
         owner_id=20,
     )
@@ -69,7 +69,7 @@ async def test_add_bot_activate_returns_commands_sync_failed():
     use_case = AddBot(cipher, commands_sync=commands_sync)
     data = AddBotData(
         bot_id=99,
-        username="game_bot",
+        username="draw_bot",
         token="123:plain",
         owner_id=20,
     )

@@ -466,7 +466,7 @@ async def test_remove_bot_deactivates_bot_and_stops_manager():
     uow = _last_uow["uow"]
     uow.bots.deactivate_for_owner.assert_awaited_once_with(999, 20)
     uow.commit.assert_awaited_once()
-    manager.stop_bot.assert_awaited_once_with(999)
+    manager.stop_bot.assert_awaited_once_with(999, token="123:valid-token")
     message.answer.assert_awaited_once_with(bot_removed_success("owned_bot"))
     try_delete_token_message_mock.assert_awaited_once_with(
         message, "upd-1", "remove_bot"

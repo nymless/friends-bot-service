@@ -33,6 +33,6 @@ async def test_remove_bot_stop_runtime_stops_bot():
     runtime = AsyncMock()
     use_case = RemoveBot()
 
-    await use_case.stop_runtime(99, runtime)
+    await use_case.stop_runtime(99, runtime, token="99:plain")
 
-    runtime.stop_bot.assert_awaited_once_with(99)
+    runtime.stop_bot.assert_awaited_once_with(99, token="99:plain")

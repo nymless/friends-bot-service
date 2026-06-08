@@ -5,7 +5,7 @@ import sys
 import uvicorn
 
 from friends_bot_service.infra.bootstrap.runtime import (
-    create_webhook_app,
+    log_worker_cpu_budget,
     run_polling,
     setup_logging,
 )
@@ -25,10 +25,12 @@ def run() -> None:
         return
 
     if settings.BOT_MODE == BotMode.WEBHOOK:
+        log_worker_cpu_budget(logger)
         uvicorn.run(
-            create_webhook_app(),
+            "friends_bot_service.main_api:app",
             host=settings.WEBHOOK_BIND_HOST,
             port=settings.WEBHOOK_BIND_PORT,
+            workers=settings.WORKER_COUNT,
         )
         return
 

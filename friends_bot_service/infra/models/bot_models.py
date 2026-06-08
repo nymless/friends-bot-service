@@ -26,7 +26,7 @@ class RegisteredBot(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
-    last_game_attempt_at: Mapped[datetime | None] = mapped_column(
+    last_draw_attempt_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
         index=True,

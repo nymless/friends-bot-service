@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     WEBHOOK_BIND_PORT: int = 8000
     WEBHOOK_BASE_URL: str | None = None
     WEBHOOK_SECRET_TOKEN: str | None = None
+    WORKER_COUNT: int = 1
     REGISTRATION_ENABLED: bool = True
     LOG_INBOUND_COMMANDS: bool = False
     ENCRYPTION_KEY: str

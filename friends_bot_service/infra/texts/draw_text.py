@@ -1,4 +1,4 @@
-WINNER_MESSAGES = {
+DRAW_SUSPENSE_MESSAGES = {
     "loser": [
         "ВНИМАНИЕ 🔥",
         "ФЕДЕРАЛЬНЫЙ 🔍 РОЗЫСК ПИДОРА 🚨",

@@ -10,7 +10,13 @@ INACTIVITY_DAYS = 60
 
 
 async def deactivate_inactive_bots() -> None:
-    """Deactivates bots that have not been used for a configured period."""
+    """Marks stale bots inactive in the database.
+
+    The script only updates ``bots.is_active``. It does not stop the running
+    service, remove Telegram webhooks, or stop polling tasks. After it runs,
+    restart the service so runtime state matches the database (webhook
+    registration on startup, polling workers, and stale delivery all realign).
+    """
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=INACTIVITY_DAYS)
 
@@ -24,6 +30,11 @@ async def deactivate_inactive_bots() -> None:
 
     for bot_id, username in deactivated_bots:
         logger.info("deactivated bot_id=%s username=%s", bot_id, username)
+
+    logger.info(
+        "deactivated %s bot(s); restart the service to apply runtime changes",
+        len(deactivated_bots),
+    )
 
 
 def main() -> None:

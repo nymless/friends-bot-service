@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class GameType(StrEnum):
+class DrawType(StrEnum):
     """Daily draw type."""
 
     WINNER = "winner"
