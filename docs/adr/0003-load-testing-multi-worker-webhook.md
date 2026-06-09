@@ -3,9 +3,19 @@
 - **Status:** Proposed
 - **Date:** 2026-06-07
 
+## Prerequisites
+
+- **ADR 0004 (observability):** production metrics and dashboards — required
+  before meaningful load-test runs. Synthetic load (k6) and live traffic must use
+  the **same** histograms and panels.
+- **ADR 0002 (multi-worker webhook):** not on `main` until `feature/workers`
+  merges. Scenarios with `WORKER_COUNT > 1` run after that merge; until then,
+  profiles on `main` may use `WORKER_COUNT=1` only.
+
 ## Context
 
-ADR 0002 compares three webhook multi-process spikes by **architecture and ops**
+ADR 0002 (on `feature/workers`, pending merge to `main`) compares three webhook
+multi-process spikes by **architecture and ops**
 (deploy topology, master placement, process count). Code review alone can judge
 layering, correctness, and operability — but **not** whether `WORKER_COUNT > 1`
 improves throughput or latency under realistic load.
@@ -52,8 +62,12 @@ decisions** (`WORKER_COUNT`, pool sizes, VPS tier).
 
 ### Metrics (record every run)
 
+Use the **production observability stack from ADR 0004** (do not maintain a
+separate ad-hoc metrics path for load tests only). At minimum per run:
+
 - **RPS** sustained and peak before errors
 - **p50 / p95 / p99** latency for `POST /webhook/{bot_id}` → 200
+- **Handler / command latency** — same series as production (`handler_duration`, etc.)
 - **Error rate** — 403, 5xx, pool timeouts, `IntegrityError` on claims
 - **CPU %** — application and PostgreSQL
 - **Active DB connections** — observed max vs configured budget
@@ -126,6 +140,7 @@ Document results in a table, e.g.:
 
 ### Deliverables (when implemented)
 
+- ADR 0004 observability in `main` (see prerequisites)
 - `docker-compose.load.yml` (or documented compose override) with resource limits
 - k6/Locust script and run checklist
 - Short results section in README or linked doc — expected order of RPS, when
@@ -143,8 +158,9 @@ Document results in a table, e.g.:
 
 ## When to revisit
 
-- Chosen webhook architecture accepted (ADR 0002) → execute load plan and update
-  this ADR to **Accepted** with recorded assumptions.
+- ADR 0004 minimal phase deployed → begin load profiles on a suitable environment.
+- ADR 0002 merged to `main` → run multi-worker matrix (`WORKER_COUNT` 1 vs 2).
+- Load plan executed → update this ADR to **Accepted** with recorded assumptions.
 - Production traffic exceeds documented RPS assumptions → re-run profiles and adjust
   `WORKER_COUNT` / pool / VPS tier.
 - Handler path changes materially (caching, fewer DB round-trips) → re-baseline.
