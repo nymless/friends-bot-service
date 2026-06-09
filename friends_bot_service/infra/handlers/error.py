@@ -6,11 +6,18 @@ from friends_bot_service.infra.texts import system_text
 
 _logger = logging.getLogger(__name__)
 
-router = Router()
+
+def create_router() -> Router:
+    router = Router()
+
+    @router.errors()
+    async def global_error_handler(event: types.ErrorEvent):
+        await _handle_error(event)
+
+    return router
 
 
-@router.errors()
-async def global_error_handler(event: types.ErrorEvent):
+async def _handle_error(event: types.ErrorEvent):
     """Handles all unhandled dispatcher errors."""
 
     update = event.update
@@ -29,3 +36,6 @@ async def global_error_handler(event: types.ErrorEvent):
             await update.message.answer(system_text.UNEXPECTED_ERROR_MESSAGE)
         except Exception:
             _logger.error("Failed to notify user about error [bot_id=%s]", bot_id)
+
+
+router = create_router()

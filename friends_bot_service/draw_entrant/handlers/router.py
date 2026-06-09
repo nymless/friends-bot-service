@@ -5,8 +5,13 @@ from .list import list_draw_entrants
 from .register import register
 from .unregister import unregister
 
-router = Router()
 
-router.message.register(list_draw_entrants, Command("list"))
-router.message.register(register, Command("reg"))
-router.message.register(unregister, Command("delete"))
+def create_router() -> Router:
+    router = Router()
+    router.message.register(list_draw_entrants, Command("list"))
+    router.message.register(register, Command("reg"))
+    router.message.register(unregister, Command("delete"))
+    return router
+
+
+router = create_router()

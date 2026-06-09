@@ -4,7 +4,12 @@ from aiogram.filters import Command
 from .loser_stats import show_loser_statistics
 from .winner_stats import show_winner_statistics
 
-router = Router()
 
-router.message.register(show_winner_statistics, Command("stats"))
-router.message.register(show_loser_statistics, Command("loserstats"))
+def create_router() -> Router:
+    router = Router()
+    router.message.register(show_winner_statistics, Command("stats"))
+    router.message.register(show_loser_statistics, Command("loserstats"))
+    return router
+
+
+router = create_router()
