@@ -28,6 +28,7 @@ from typing import TypeVar
 from sqlalchemy.exc import InterfaceError, SQLAlchemyError
 
 from friends_bot_service.infra.core.database import session_factory
+from friends_bot_service.infra.observability.db_metrics import record_db_unavailable
 from friends_bot_service.infra.repositories.unit_of_work import SqlAlchemyUnitOfWork
 
 _T = TypeVar("_T")
@@ -54,5 +55,6 @@ async def run_with_unit_of_work(
 
     except (InterfaceError, ConnectionError, SQLAlchemyError) as exc:
         _logger.exception("DATABASE_OFFLINE")
+        record_db_unavailable()
 
         raise DatabaseUnavailableError from exc

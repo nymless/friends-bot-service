@@ -14,6 +14,7 @@ from friends_bot_service.infra.middlewares.inbound_command_log import (
     register_inbound_command_log_middleware,
 )
 from friends_bot_service.infra.middlewares.update_id import UpdateIdMiddleware
+from friends_bot_service.infra.observability import register_handler_metrics_middleware
 from friends_bot_service.master_bot.handlers.router import (
     create_router as create_master_bot_router,
 )
@@ -27,6 +28,7 @@ def get_bot_dispatcher() -> Dispatcher:
         F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP}), F.from_user
     )
     dp.update.middleware(UpdateIdMiddleware())
+    register_handler_metrics_middleware(dp, "draw")
     register_inbound_command_log_middleware(dp)
     dp.include_routers(
         create_draw_entrant_router(),
@@ -43,6 +45,7 @@ def get_master_bot_dispatcher() -> Dispatcher:
     master_dp = Dispatcher()
     master_dp.message.filter(F.chat.type == ChatType.PRIVATE, F.from_user)
     master_dp.update.middleware(UpdateIdMiddleware())
+    register_handler_metrics_middleware(master_dp, "master")
     register_inbound_command_log_middleware(master_dp)
     master_dp.include_routers(
         create_master_bot_router(),

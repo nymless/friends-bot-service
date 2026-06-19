@@ -19,6 +19,7 @@ from friends_bot_service.infra.bootstrap.master_polling import (
 from friends_bot_service.infra.bot_manager import factory as manager_factory
 from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.enums.enums import BotMode
+from friends_bot_service.infra.observability import setup_webhook_observability
 from friends_bot_service.infra.security import default_token_cipher
 
 _logger = logging.getLogger(__name__)
@@ -168,5 +169,6 @@ def create_webhook_app() -> FastAPI:
             _logger.info("shutdown completed")
 
     app = FastAPI(lifespan=lifespan)
+    setup_webhook_observability(app)
     app.include_router(router)
     return app

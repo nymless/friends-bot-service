@@ -6,6 +6,10 @@ from aiogram.utils.chat_action import ChatActionSender
 from friends_bot_service.draw import domain, usecases
 from friends_bot_service.infra.bootstrap import db
 from friends_bot_service.infra.core.lock import get_bot_chat_lock
+from friends_bot_service.infra.observability import (
+    record_draw_completed,
+    record_draw_rejected,
+)
 from friends_bot_service.infra.repositories.unit_of_work import SqlAlchemyUnitOfWork
 from friends_bot_service.infra.texts import draw_entrant_text as text
 from friends_bot_service.infra.texts import system_text
@@ -56,14 +60,17 @@ async def _run_draw_locked(
     outcome = usecases.PrepareDrawOutcome
 
     if result.outcome is outcome.NOT_REGISTERED:
+        record_draw_rejected(game_type, "not_registered")
         await message.answer(text.DRAW_ENTRANT_NOT_IN_LIST)
         return
 
     if result.outcome is outcome.ALREADY_PLAYED:
+        record_draw_rejected(game_type, "already_played")
         await message.answer(text.DRAW_ALREADY_PLAYED)
         return
 
     if result.outcome is outcome.NO_PLAYERS:
+        record_draw_rejected(game_type, "no_entrants")
         await message.answer(text.DRAW_NO_PLAYERS)
         return
 
@@ -102,3 +109,6 @@ async def _run_draw_locked(
         await db.run_with_unit_of_work(record_draw)
     except db.DatabaseUnavailableError:
         await message.answer(system_text.DB_UNAVAILABLE_MESSAGE)
+        return
+
+    record_draw_completed(game_type)

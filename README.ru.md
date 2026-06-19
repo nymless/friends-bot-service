@@ -199,6 +199,27 @@ make hooks     # установить git pre-commit hooks (также при ma
 make pre-commit  # прогнать pre-commit по всем файлам
 ```
 
+## Наблюдаемость
+
+В webhook-режиме метрики Prometheus доступны на `GET /metrics` (см. ADR 0004).
+
+Основные серии:
+
+- `friends_bot_webhook_request_duration_seconds` — задержка HTTP по статусу
+- `friends_bot_handler_duration_seconds` — время хендлера по slash-команде
+- `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — исходы розыгрыша
+- `friends_bot_db_errors_total` — недоступность базы
+
+Локально Prometheus и Grafana (скрейп `host.docker.internal:8000`, пока приложение на хосте):
+
+```bash
+docker compose -f docker-compose.monitoring.yml up
+```
+
+Grafana: http://localhost:3000 (логин по умолчанию `admin` / `admin`).
+
+Метрики хендлеров работают и в polling; `/metrics` — когда запущено FastAPI webhook-приложение.
+
 ## Примечания
 
 - Сервис использует in-memory lock и ограничения базы данных, чтобы уменьшить
