@@ -1,5 +1,5 @@
 .PHONY: help install install_prod run run_api deactivate_inactive_bots test type lint format check clean \
-		hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history
+		hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ": ## "}; /^[a-zA-Z0-9_-]+: ## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -63,3 +63,6 @@ db-downgrade: ## Roll back one migration
 
 db-history: ## Show migration history
 	uv run alembic history --indicate-current
+
+count: ## Count lines of code
+	uv run pygount --format=summary friends_bot_service
