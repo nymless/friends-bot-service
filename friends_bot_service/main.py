@@ -25,7 +25,11 @@ def run() -> None:
         return
 
     if settings.BOT_MODE == BotMode.WEBHOOK:
-        uvicorn.run(create_webhook_app(), host="127.0.0.1", port=8000)
+        uvicorn.run(
+            create_webhook_app(),
+            host=settings.WEBHOOK_BIND_HOST,
+            port=settings.WEBHOOK_BIND_PORT,
+        )
         return
 
     logger.critical("unsupported mode %s", settings.BOT_MODE)

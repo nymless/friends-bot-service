@@ -1,4 +1,4 @@
-.PHONY: help install install_prod run run_api deactivate_inactive_bots test type lint format check clean \
+.PHONY: help install install_prod run run_api monitoring-up monitoring-down deactivate_inactive_bots test type lint format check clean \
 		hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
 help: ## Show available commands
@@ -17,11 +17,20 @@ pre-commit: ## Run pre-commit on all files
 install_prod: ## Install production dependencies only
 	uv sync --no-dev
 
-run: ## Start the service using BOT_MODE
-	uv run python -m friends_bot_service.main
+HOST ?= 127.0.0.1
+PORT ?= 8000
 
-run_api: ## Start the FastAPI app directly
-	uv run python -m friends_bot_service.main_api
+run: ## Start the service using BOT_MODE (override: make run HOST=0.0.0.0 PORT=80)
+	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main
+
+run_api: ## Start the FastAPI app directly (override: make run_api PORT=80)
+	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main_api
+
+monitoring-up: ## Start Prometheus + Grafana (override: make monitoring-up PORT=80)
+	SCRAPE_PORT=$(PORT) docker compose -f docker-compose.monitoring.yml up -d
+
+monitoring-down: ## Stop Prometheus + Grafana
+	docker compose -f docker-compose.monitoring.yml stop
 
 deactivate_inactive_bots: ## Deactivate bots inactive for 60 days
 	uv run python -m friends_bot_service.infra.scripts.deactivate_inactive_bots

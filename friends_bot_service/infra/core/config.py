@@ -5,6 +5,8 @@ class Settings(BaseSettings):
     """PyDantic settings for the application."""
 
     BOT_MODE: str
+    WEBHOOK_BIND_HOST: str = "127.0.0.1"
+    WEBHOOK_BIND_PORT: int = 8000
     WEBHOOK_BASE_URL: str | None = None
     WEBHOOK_SECRET_TOKEN: str | None = None
     REGISTRATION_ENABLED: bool = True

@@ -3,8 +3,11 @@ services:
     image: prom/prometheus:v3.2.1
     ports:
       - "9090:9090"
+    environment:
+      SCRAPE_PORT: ${SCRAPE_PORT:-8000}
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -17,3 +20,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     volumes:
       - ./ops/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  prometheus_data:
+  grafana_data:

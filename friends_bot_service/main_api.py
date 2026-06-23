@@ -11,9 +11,14 @@ from friends_bot_service.infra.bootstrap.runtime import (
     create_webhook_app,
     setup_logging,
 )
+from friends_bot_service.infra.core.config import settings
 
 setup_logging()
 app = create_webhook_app()
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(
+        app,
+        host=settings.WEBHOOK_BIND_HOST,
+        port=settings.WEBHOOK_BIND_PORT,
+    )
