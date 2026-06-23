@@ -25,7 +25,12 @@ def run() -> None:
         return
 
     if settings.BOT_MODE == BotMode.WEBHOOK:
+        from friends_bot_service.infra.observability.multiproc import (
+            prepare_for_webhook_workers,
+        )
+
         log_worker_cpu_budget(logger)
+        prepare_for_webhook_workers(settings.WORKER_COUNT)
         uvicorn.run(
             "friends_bot_service.main_api:app",
             host=settings.WEBHOOK_BIND_HOST,

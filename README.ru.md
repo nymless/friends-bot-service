@@ -96,7 +96,9 @@ LOG_INBOUND_COMMANDS=false
 
 - `WORKER_COUNT` — число uvicorn workers в webhook-режиме (по умолчанию `1`). У
   каждого worker свой пул SQLAlchemy; см.
-  [Бюджет соединений с БД](#бюджет-соединений-с-бд).
+  [Бюджет соединений с БД](#бюджет-соединений-с-бд). При `WORKER_COUNT > 1` endpoint
+  `/metrics` агрегирует счётчики и гистограммы всех workers через multiprocess-режим
+  `prometheus_client` (mmap-файлы в `.prometheus_multiproc/`).
 - `MASTER_TOKEN` — токен приватного управляющего бота.
 - `WEBHOOK_BASE_URL` обязателен в режиме webhook и должен указывать на публичный базовый URL сервиса.
 - `WEBHOOK_SECRET_TOKEN` обязателен в режиме webhook и используется для проверки, что запросы действительно приходят от Telegram.
@@ -217,7 +219,7 @@ make pre-commit  # прогнать pre-commit по всем файлам
 make monitoring-up PORT=80   # опционально; по умолчанию 8000
 ```
 
-Grafana: http://localhost:3000 (логин по умолчанию `admin` / `admin`).
+Grafana: <http://localhost:3000> (логин по умолчанию `admin` / `admin`).
 
 Метрики хендлеров работают и в polling; `/metrics` — когда запущено FastAPI webhook-приложение.
 

@@ -19,9 +19,10 @@ install_prod: ## Install production dependencies only
 
 HOST ?= 127.0.0.1
 PORT ?= 8000
+WORKERS ?= 1
 
-run: ## Start the service using BOT_MODE (override: make run HOST=0.0.0.0 PORT=80)
-	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main
+run: ## Start the service using BOT_MODE (override: make run PORT=80 WORKERS=2)
+	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) WORKER_COUNT=$(WORKERS) uv run python -m friends_bot_service.main
 
 run_api: ## Start the FastAPI app directly (override: make run_api PORT=80)
 	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main_api

@@ -24,5 +24,5 @@ wheels/
 # ruff
 .ruff_cache/
 
-# draw.io
-*.bkp
+# Prometheus multiprocess mmap files (WORKER_COUNT > 1)
+.prometheus_multiproc/

@@ -22,6 +22,7 @@ from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.core.database import log_db_pool_budget
 from friends_bot_service.infra.enums.enums import BotMode
 from friends_bot_service.infra.observability import setup_webhook_observability
+from friends_bot_service.infra.observability.multiproc import mark_current_process_dead
 from friends_bot_service.infra.security import default_token_cipher
 
 _logger = logging.getLogger(__name__)
@@ -188,6 +189,8 @@ def create_webhook_app() -> FastAPI:
             yield
         finally:
             _logger.warning("shutting down FastAPI app")
+
+            mark_current_process_dead()
 
             if isinstance(manager, WebhookBotManager):
                 await manager.unregister_webhook(master_bot)

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     WEBHOOK_BASE_URL: str | None = None
     WEBHOOK_SECRET_TOKEN: str | None = None
     WORKER_COUNT: int = 1
+    PROMETHEUS_MULTIPROC_DIR: str | None = None
     REGISTRATION_ENABLED: bool = True
     LOG_INBOUND_COMMANDS: bool = False
     ENCRYPTION_KEY: str

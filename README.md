@@ -96,7 +96,9 @@ Notes:
 
 - `WORKER_COUNT` — number of uvicorn workers in webhook mode (default `1`). Each
   worker is a separate process with its own SQLAlchemy pool; see
-  [Database connection budget](#database-connection-budget).
+  [Database connection budget](#database-connection-budget). With `WORKER_COUNT > 1`,
+  `/metrics` aggregates counters and histograms from all workers via
+  `prometheus_client` multiprocess mode (mmap files in `.prometheus_multiproc/`).
 - `MASTER_TOKEN` is the token of the private control bot.
 - `WEBHOOK_BASE_URL` is required in webhook mode and should point to the public base URL of the service.
 - `WEBHOOK_SECRET_TOKEN` is required in webhook mode and is used to verify that webhook requests really come from Telegram.
@@ -217,7 +219,7 @@ Local Prometheus and Grafana (use the same `PORT` as `make run`):
 make monitoring-up PORT=80   # optional; default 8000
 ```
 
-Open Grafana at http://localhost:3000 (default login `admin` / `admin`), add panels
+Open Grafana at <http://localhost:3000> (default login `admin` / `admin`), add panels
 for the metrics above, or import a dashboard later.
 
 Handler metrics also apply in polling mode; `/metrics` is available when the FastAPI
