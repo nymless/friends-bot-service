@@ -19,9 +19,17 @@ Multi-worker webhook sizing (ADR 0002, on `feature/workers` until merge to
 
 ## Decision
 
-Add **Prometheus-style application metrics** exposed from the service, scraped in
-production, viewed in **Grafana** (self-hosted or cloud). Implementation lives
-in a dedicated `infra/observability` package with thin hooks in bootstrap code.
+Add **Prometheus-style application metrics** exposed from the service via `GET /metrics`
+(`prometheus_client` in-process). Implementation lives in a dedicated
+`infra/observability` package with thin hooks in bootstrap code.
+
+**Prometheus and Grafana are not deployed on the production VPS.** They run
+**locally** (`docker-compose.monitoring.yml`) when needed — load tests (ADR 0003),
+manual debugging, PromQL analysis. The deployed app only exposes `/metrics`; scrape
+target is configured on the dev machine (e.g. `host.docker.internal` or tunnel).
+
+Grafana dashboards and alert rules are **optional**; PromQL in Prometheus is
+sufficient for Phase 1 and ADR 0003.
 
 ### Goals
 
@@ -30,7 +38,7 @@ in a dedicated `infra/observability` package with thin hooks in bootstrap code.
 | **Ingress** | Webhook request duration (response status), RPS, 403/5xx rate |
 | **Handlers** | Per-command or per-handler duration and count (`/run`, `/reg`, master commands, …) |
 | **Draw flow** | Draw completed vs rejected (`already_played`, `not_registered`, …) |
-| **Database** | Pool checkout time or saturation signals; optional connection gauge |
+| **Database** | `db_errors_total` in Phase 1; pool/saturation gauges deferred until load tests show a need |
 | **Errors** | Unhandled handler exceptions, `DatabaseUnavailableError` |
 
 ### Non-goals (initial phase)
@@ -76,28 +84,31 @@ FastAPI webhook app runs (`make run` webhook or `make run_api`).
 
 ### Runtime stack
 
-| Component | Role |
-| --------- | ---- |
-| `prometheus_client` | In-process metrics |
-| Prometheus | Scrape `/metrics` on an interval |
-| Grafana | Dashboards, p50/p95/p99, alerts |
+| Component | Where | Role |
+| --------- | ----- | ---- |
+| `prometheus_client` | App (VPS or local) | In-process metrics; `GET /metrics` on webhook app |
+| Prometheus | **Local** (compose) | Scrape `/metrics` on an interval; TSDB history; PromQL |
+| Grafana | **Local** (compose), optional | Dashboards; not required if PromQL suffices |
 
-Deploy Prometheus and Grafana on the VPS, or use a managed offering. Document
-scrape target and ports in README when implemented.
+Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_PORT`).
 
 ### Phases
 
-1. **Phase 1 (minimal prod):** metrics package, middleware, `/metrics`, scrape
-   in production, one Grafana dashboard (webhook latency, command rate, errors).
-2. **Phase 2:** draw outcome panels, DB pressure, alert rules (service down, high p95).
-3. **Phase 3:** execute ADR 0003 load profiles using the same dashboards.
+1. **Phase 1:** metrics package, middleware, `/metrics`, local scrape via compose,
+   README metric list. Grafana dashboard JSON **optional** (webhook latency, command
+   rate, errors) — PromQL covers the same queries.
+2. **Phase 2 (on demand):** draw outcome panels in Grafana; DB pressure metrics or
+   `postgres_exporter` if load tests are inconclusive; alert rules when always-on prod
+   monitoring is worth the ops cost.
+3. **Phase 3:** execute ADR 0003 load profiles using the **same metric names** and
+   local Prometheus (Grafana optional).
 
 ### Relationship to other ADRs
 
 | ADR | Relationship |
 | --- | -------------- |
 | 0002 | Worker count is an optional label after merge; observability ships first |
-| 0003 | Prerequisite; load tests read production metric names and dashboards |
+| 0003 | Prerequisite; load tests read the same metric names via local Prometheus |
 
 ### Branch and merge policy
 
@@ -110,21 +121,22 @@ scrape target and ports in README when implemented.
 
 - **Positive:** Real user experience visible without manual testing; ADR 0003 uses
   one source of truth for latency and RPS.
-- **Negative:** Operational surface (Prometheus, Grafana, scrape config); label
-  discipline required to avoid cardinality blow-up.
+- **Negative:** Label discipline required to avoid cardinality blow-up; local
+  Prometheus/Grafana stack when analysing runs (not on prod VPS).
 - **Neutral:** Logs (`LOG_INBOUND_COMMANDS`) remain for audit; metrics complement,
   not replace, logs.
 
-## Deliverables (when implemented)
+## Deliverables
 
-- `friends_bot_service/infra/observability/` package
-- `GET /metrics` on webhook app
-- `docker-compose.monitoring.yml` (or documented VPS setup) for Prometheus + Grafana
-- Example dashboard JSON or setup checklist
-- README section: what to watch in production
+- `friends_bot_service/infra/observability/` package — **done** on `feature/observability`
+- `GET /metrics` on webhook app — **done**
+- `docker-compose.monitoring.yml` for **local** Prometheus + Grafana — **done**
+- README section: metric names and local `make monitoring-up` — **done**
+- Example Grafana dashboard JSON — optional (Phase 2)
+- Prod VPS: app ships with `/metrics`; no Prometheus/Grafana co-located on VPS
 
 ## When to revisit
 
-- Phase 1 deployed → set ADR to **Accepted** or **Accepted / Phase 1**.
+- Phase 1 merged to `main` → set ADR to **Accepted / Phase 1**.
 - ADR 0003 completed → add documented RPS/worker assumptions to README or this ADR.
 - Need per-request traces across DB and Telegram → new ADR or Phase 4 for OpenTelemetry.
