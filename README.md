@@ -215,7 +215,7 @@ Local Prometheus and Grafana (scrape `host.docker.internal:8000` while the app r
 the host):
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up
+docker compose -f compose.monitoring.yml up
 ```
 
 Open Grafana at http://localhost:3000 (default login `admin` / `admin`), add panels

@@ -213,7 +213,7 @@ make pre-commit  # прогнать pre-commit по всем файлам
 Локально Prometheus и Grafana (скрейп `host.docker.internal:8000`, пока приложение на хосте):
 
 ```bash
-docker compose -f docker-compose.monitoring.yml up
+docker compose -f compose.monitoring.yml up
 ```
 
 Grafana: http://localhost:3000 (логин по умолчанию `admin` / `admin`).
