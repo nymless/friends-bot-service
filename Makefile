@@ -1,5 +1,6 @@
 .PHONY: help install install_prod run run_api docker-build load-build load-up load-down load-down-v load-logs \
-		load-seed load-restart load-k6 load-k6-polling monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
+		load-seed load-restart load-k6 load-k6-polling load-k6-run load-k6-run-polling \
+		load-k6-run-contention load-k6-run-contention-polling monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
 		test type lint format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
 # ------------------------------------------------------------------------------
@@ -82,6 +83,18 @@ load-k6: ## Run k6 webhook /stats profile in Docker (BOT_MODE=webhook)
 
 load-k6-polling: ## Run k6 polling /stats profile in Docker (BOT_MODE=polling)
 	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_stats.js
+
+load-k6-run: ## Run k6 webhook happy-path draw (LOAD_SEED_DRAW_ENTRANTS=true, BOT_MODE=webhook)
+	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_run.js
+
+load-k6-run-polling: ## Run k6 polling happy-path draw (LOAD_SEED_DRAW_ENTRANTS=true, BOT_MODE=polling)
+	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_run.js
+
+load-k6-run-contention: ## Run k6 webhook draw contention on one bot/chat
+	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_run_contention.js
+
+load-k6-run-contention-polling: ## Run k6 polling draw contention on one bot/chat
+	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_run_contention.js
 
 # ------------------------------------------------------------------------------
 # Monitoring
