@@ -51,6 +51,35 @@ engine, no network latency, no real pool contention.
 an architecture spike on code/ops grounds, but **required before production sizing
 decisions** (`WORKER_COUNT`, pool sizes, VPS tier).
 
+### Planned AB comparisons
+
+Load infrastructure on `feature/load-test` (based on `main`) establishes a
+**baseline** first. The same scenarios are re-run after merging that tooling into
+`feature/workers`. Two comparisons are in scope; they use **different** `BOT_MODE`
+values — do not mix them in one run.
+
+| ID | Mode | Branches / variants | What changes | Primary question |
+| -- | ---- | ------------------- | ------------ | ---------------- |
+| **AB-1** | `BOT_MODE=webhook` | `main` → `feature/workers` | In-memory bot registry + single process vs DB-first webhook ingress; later `WORKER_COUNT` | Throughput/latency regression and multi-worker gain |
+| **AB-2** | `BOT_MODE=polling` | `main` → `feature/workers` | In-process lock vs DB **claim** on draw | Extra DB work on happy-path `/run`; contention as a correctness safety net |
+
+**AB-1 (webhook):** `NGINX_ENABLED=1`. k6 → `make load-k6*`, `make load-k6-run*`,
+`make load-k6-run-contention*`. Run all three profiles; compare ingress, heavy handler,
+and parallel `/run` on one chat.
+
+**AB-2 (polling):** `NGINX_ENABLED=0`. k6 → `make load-k6-polling`,
+`make load-k6-run-polling`, `make load-k6-run-contention-polling`. Run **all three**.
+Happy-path `/run` is the main place to see claim overhead (extra DB round-trips per
+draw). Contention is not expected to disprove correctness of lock or claim; it is a
+belt-and-braces check under parallel `/run` on one `(bot_id, chat_id)` — expect
+`draw_completed` = 1, `draw_rejected{reason="already_played"}` ≈ iterations − 1, no
+duplicate winners in `stats`.
+
+**Order:** implement and run all profiles on `main` (baseline); merge load stack
+to `feature/workers`; repeat the **same** checklist for each AB row.
+
+Operational steps: [load-runbook.md](../load-runbook.md).
+
 ### Goals
 
 | Question | How to answer |
@@ -58,7 +87,8 @@ decisions** (`WORKER_COUNT`, pool sizes, VPS tier).
 | Multi-worker vs single-worker | Same handler code; vary only `WORKER_COUNT` on identical hardware profile |
 | When gain appears | Ramp RPS; record knee where p95 improves with workers |
 | Cost of DB-first webhook | Baseline: `WORKER_COUNT=1` current spike vs legacy single-process + cache (if branch/tag available) |
-| Correctness under contention | Separate scenario: concurrent `/run` on same `(bot_id, chat_id)` — claim races, not RPS |
+| Cost of DB claim vs in-memory lock (polling) | Happy-path `/run` on workers vs main — handler latency, DB load |
+| Correctness under contention | Contention scenario: parallel `/run` on same `(bot_id, chat_id)` — safety check, not the only AB signal |
 
 ### Metrics (record every run)
 
@@ -142,7 +172,7 @@ Document results in a table, e.g.:
 
 - ADR 0004 observability in `main` (see prerequisites)
 - `docker-compose.load.yml` (or documented compose override) with resource limits
-- k6/Locust script and run checklist
+- k6/Locust script and run checklist — see [load-runbook.md](../load-runbook.md)
 - Short results section in README or linked doc — expected order of RPS, when
   `WORKER_COUNT > 1` is worth considering
 
