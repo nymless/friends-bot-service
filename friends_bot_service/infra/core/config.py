@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     WEBHOOK_BIND_PORT: int = 8000
     WEBHOOK_BASE_URL: str | None = None
     WEBHOOK_SECRET_TOKEN: str | None = None
+    TELEGRAM_API_BASE_URL: str | None = None
     REGISTRATION_ENABLED: bool = True
     LOG_INBOUND_COMMANDS: bool = False
     ENCRYPTION_KEY: str

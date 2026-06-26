@@ -6,24 +6,28 @@
 #
 # Switching main ↔ workers: make load-down-v, rebuild image, load-up (migrations differ).
 services:
+  telegram-mock:
+    image: friends-bot-telegram-mock:local
+    build:
+      context: .
+      dockerfile: load/telegram-mock/Dockerfile
+
   vps-sim:
     image: friends-bot-vps-sim:local
     build:
       context: .
-      dockerfile: docker/Dockerfile.vps-sim
+      dockerfile: load/vps-sim/Dockerfile
       args:
         APP_IMAGE: ${APP_IMAGE:-friends-bot-service:local}
+    depends_on:
+      - telegram-mock
     env_file:
       - path: .env.load
         required: false
     environment:
-      NGINX_ENABLED: ${NGINX_ENABLED:-0}
-      BOT_MODE: ${BOT_MODE:-webhook}
-      WORKER_COUNT: ${WORKER_COUNT:-1}
-      POSTGRES_USER: ${POSTGRES_USER:-bot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
-      POSTGRES_DB: ${POSTGRES_DB:-friends_bot}
-      DB_URL: postgresql+asyncpg://${POSTGRES_USER:-bot}:${POSTGRES_PASSWORD:-bot}@127.0.0.1:5432/${POSTGRES_DB:-friends_bot}
+      # Load profile: credentials and app config come from .env.load only.
+      # Do not set POSTGRES_* / DB_URL here — avoids drift vs the persisted volume.
+      TELEGRAM_API_BASE_URL: http://telegram-mock:8081
     ports:
       - "${LOAD_HTTP_PORT:-8080}:80"
       - "${LOAD_APP_PORT:-8000}:8000"

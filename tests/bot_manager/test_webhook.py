@@ -28,9 +28,8 @@ async def test_start_bot_sets_webhook_with_secret_token():
     )
     manager = WebhookBotManager("https://example.com", "secret-token")
 
-    # Run startup through the patched aiogram Bot constructor.
     with patch(
-        "friends_bot_service.infra.bot_manager.webhook.Bot",
+        "friends_bot_service.infra.bot_manager.webhook.create_bot",
         return_value=fake_bot,
     ):
         bot = await manager.start_bot("321:token")

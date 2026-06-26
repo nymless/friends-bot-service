@@ -22,7 +22,10 @@ docs/
 tests/
 .pre-commit-config.yaml
 
-# Monitoring / load-test compose files (run separately from the app image)
+# k6 scripts (not needed in the production app image)
+load/k6/
+
+# Compose profiles (run separately from the app image)
 compose.load.yml
 compose.monitoring.yml
 ops/

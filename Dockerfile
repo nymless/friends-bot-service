@@ -19,6 +19,8 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY alembic.ini ./
 COPY alembic/ alembic/
 COPY friends_bot_service/ friends_bot_service/
+COPY load/__init__.py load/
+COPY load/seed_bots.py load/
 RUN uv sync --frozen --no-dev
 
 RUN useradd --create-home --uid 10001 appuser \

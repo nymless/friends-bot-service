@@ -1,6 +1,7 @@
 from aiogram import Bot
 
 from friends_bot_service.infra.bot_manager.base import BotManager
+from friends_bot_service.infra.telegram import create_bot
 
 
 class WebhookBotManager(BotManager):
@@ -14,7 +15,7 @@ class WebhookBotManager(BotManager):
     async def start_bot(self, token: str) -> Bot:
         """Starts a bot with webhook."""
 
-        bot = Bot(token=token)
+        bot = create_bot(token)
         bot_user = await bot.get_me()
 
         existing_bot = self.get_bot(bot_user.id)

@@ -16,14 +16,11 @@ COPY --from=app --chown=appuser:appuser /app /app
 
 ENV PATH="/usr/local/bin:/app/.venv/bin:${PATH}"
 
-COPY docker/vps-sim/nginx.conf /etc/nginx/conf.d/default.conf
-COPY docker/vps-sim/entrypoint.sh /usr/local/bin/vps-sim-entrypoint.sh
+COPY load/vps-sim/nginx.conf /etc/nginx/conf.d/default.conf
+COPY load/vps-sim/entrypoint.sh /usr/local/bin/vps-sim-entrypoint.sh
 RUN chmod +x /usr/local/bin/vps-sim-entrypoint.sh
 
-ENV POSTGRES_USER=bot \
-    POSTGRES_PASSWORD=bot \
-    POSTGRES_DB=friends_bot \
-    NGINX_ENABLED=0 \
+ENV NGINX_ENABLED=0 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_COMPILE_BYTECODE=1 \
