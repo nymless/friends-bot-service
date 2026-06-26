@@ -1,6 +1,6 @@
 .PHONY: help install install_prod run run_api docker-build load-build load-up load-down load-down-v load-logs \
-		load-seed load-restart load-k6 monitoring-up monitoring-down deactivate_inactive_bots test type lint \
-		format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
+		load-seed load-restart load-k6 monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
+		test type lint format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
 # ------------------------------------------------------------------------------
 # Configuration
@@ -15,6 +15,14 @@ LOAD_COMPOSE = docker compose --env-file $(LOAD_ENV_FILE) -f $(COMPOSE_LOAD)
 LOAD_HTTP_PORT ?= 8080
 HOST ?= 127.0.0.1
 PORT ?= 8000
+WEBHOOK_BIND_HOST = $(HOST)
+WEBHOOK_BIND_PORT = $(PORT)
+export HOST
+export PORT
+export WEBHOOK_BIND_HOST
+export WEBHOOK_BIND_PORT
+MONITORING_COMPOSE = docker compose -f compose.monitoring.yml
+MONITORING_COMPOSE_LOAD = docker compose --env-file $(LOAD_ENV_FILE) -f compose.monitoring.yml
 
 # ------------------------------------------------------------------------------
 # Help
@@ -68,11 +76,14 @@ load-k6: ## Run k6 stats webhook profile (k6 on PATH; reads .env.load)
 
 ##@ Monitoring
 
-monitoring-up: ## Start Prometheus + Grafana (override: PORT=80)
-	SCRAPE_PORT=$(PORT) docker compose -f compose.monitoring.yml up -d
+monitoring-up: ## Start Prometheus + Grafana (override: PORT=8000 — matches make run)
+	$(MONITORING_COMPOSE) up -d
+
+monitoring-up-load: ## Start Prometheus + Grafana (scrapes LOAD_APP_PORT from .env.load)
+	$(MONITORING_COMPOSE_LOAD) up -d
 
 monitoring-down: ## Stop Prometheus + Grafana
-	docker compose -f compose.monitoring.yml stop
+	$(MONITORING_COMPOSE) down
 
 # ------------------------------------------------------------------------------
 # Local development
@@ -94,10 +105,10 @@ pre-commit: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
 
 run: ## Start the service using BOT_MODE (override: HOST=0.0.0.0 PORT=80)
-	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main
+	uv run python -m friends_bot_service.main
 
 run_api: ## Start the FastAPI app directly (override: PORT=80)
-	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main_api
+	uv run python -m friends_bot_service.main_api
 
 deactivate_inactive_bots: ## Deactivate bots inactive for 60 days
 	uv run python -m friends_bot_service.infra.scripts.deactivate_inactive_bots

@@ -5,8 +5,8 @@ set -euo pipefail
 : "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (set in .env.load)}"
 : "${POSTGRES_DB:?POSTGRES_DB is required (set in .env.load)}"
 
-# Single DB URL for alembic + app — always derived from POSTGRES_* (see .env.load).
-export DB_URL="postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}"
+# Single DB URL for alembic + app (compose also sets DB_URL for docker exec).
+export DB_URL="${DB_URL:-postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}}"
 
 /usr/local/bin/docker-entrypoint.sh postgres &
 postgres_pid=$!
