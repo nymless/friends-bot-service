@@ -25,16 +25,6 @@ def create_observable_test_app(*, secret_token: str = "test-secret") -> FastAPI:
     return app
 
 
-def test_metrics_endpoint_exposes_prometheus_text():
-    app = create_observable_test_app()
-
-    with TestClient(app) as client:
-        response = client.get("/metrics")
-
-    assert response.status_code == 200
-    assert "friends_bot_webhook_requests_total" in response.text
-
-
 def test_webhook_middleware_records_status_label():
     app = create_observable_test_app()
     before = WEBHOOK_REQUESTS_TOTAL.labels(status="403")._value.get()

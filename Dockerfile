@@ -10,7 +10,9 @@ ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     WEBHOOK_BIND_HOST=0.0.0.0 \
-    WEBHOOK_BIND_PORT=8000
+    WEBHOOK_BIND_PORT=8000 \
+    METRICS_BIND_HOST=127.0.0.1 \
+    METRICS_BIND_PORT=8001
 
 # Install dependencies before application code for better layer caching.
 COPY pyproject.toml uv.lock ./

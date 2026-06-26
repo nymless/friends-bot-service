@@ -19,7 +19,10 @@ from friends_bot_service.infra.bootstrap.master_polling import (
 from friends_bot_service.infra.bot_manager import factory as manager_factory
 from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.enums.enums import BotMode
-from friends_bot_service.infra.observability import setup_webhook_observability
+from friends_bot_service.infra.observability import (
+    setup_webhook_observability,
+    start_metrics_server,
+)
 from friends_bot_service.infra.security import default_token_cipher
 
 _logger = logging.getLogger(__name__)
@@ -102,6 +105,16 @@ async def run_polling() -> None:
         _logger.critical("invalid mode for polling app, exiting")
         sys.exit(1)
 
+    start_metrics_server(
+        host=settings.METRICS_BIND_HOST,
+        port=settings.METRICS_BIND_PORT,
+    )
+    _logger.info(
+        "metrics server started host=%s port=%s",
+        settings.METRICS_BIND_HOST,
+        settings.METRICS_BIND_PORT,
+    )
+
     manager, master_dp, master_bot = create_polling_runtime_components()
     master_context = MasterBotPollingContext(manager=manager)
 
@@ -129,6 +142,16 @@ def create_webhook_app() -> FastAPI:
         if settings.BOT_MODE == BotMode.POLLING:
             _logger.critical("invalid mode for webhook app, exiting")
             sys.exit(1)
+
+        start_metrics_server(
+            host=settings.METRICS_BIND_HOST,
+            port=settings.METRICS_BIND_PORT,
+        )
+        _logger.info(
+            "metrics server started host=%s port=%s",
+            settings.METRICS_BIND_HOST,
+            settings.METRICS_BIND_PORT,
+        )
 
         dp, manager, master_dp, master_bot = create_webhook_runtime_components()
         master_context = MasterBotPollingContext(manager=manager)

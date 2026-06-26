@@ -4,8 +4,7 @@ services:
     ports:
       - "9090:9090"
     environment:
-      # monitoring-up: PORT. monitoring-up-load: LOAD_APP_PORT from .env.load
-      PORT: ${LOAD_APP_PORT:-${PORT:-8000}}
+      PORT: ${METRICS_PORT:-8001}
     volumes:
       - ./ops/prometheus/prometheus.yml.template:/etc/prometheus/prometheus.yml.template:ro
       - prometheus_data:/prometheus

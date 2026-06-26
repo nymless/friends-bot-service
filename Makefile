@@ -15,14 +15,19 @@ LOAD_COMPOSE = docker compose --env-file $(LOAD_ENV_FILE) -f $(COMPOSE_LOAD)
 LOAD_HTTP_PORT ?= 8080
 HOST ?= 127.0.0.1
 PORT ?= 8000
+METRICS_PORT ?= 8001
 WEBHOOK_BIND_HOST = $(HOST)
 WEBHOOK_BIND_PORT = $(PORT)
+METRICS_BIND_HOST = $(HOST)
+METRICS_BIND_PORT = $(METRICS_PORT)
 export HOST
 export PORT
+export METRICS_PORT
 export WEBHOOK_BIND_HOST
 export WEBHOOK_BIND_PORT
+export METRICS_BIND_HOST
+export METRICS_BIND_PORT
 MONITORING_COMPOSE = docker compose -f compose.monitoring.yml
-MONITORING_COMPOSE_LOAD = docker compose --env-file $(LOAD_ENV_FILE) -f compose.monitoring.yml
 
 # ------------------------------------------------------------------------------
 # Help
@@ -76,11 +81,11 @@ load-k6: ## Run k6 stats webhook profile (k6 on PATH; reads .env.load)
 
 ##@ Monitoring
 
-monitoring-up: ## Start Prometheus + Grafana (override: PORT=8000 — matches make run)
+monitoring-up: ## Start Prometheus + Grafana (override: METRICS_PORT=8001 — matches metrics bind)
 	$(MONITORING_COMPOSE) up -d
 
-monitoring-up-load: ## Start Prometheus + Grafana (scrapes LOAD_APP_PORT from .env.load)
-	$(MONITORING_COMPOSE_LOAD) up -d
+monitoring-up-load: ## Same as monitoring-up (METRICS_PORT from Makefile)
+	$(MONITORING_COMPOSE) up -d
 
 monitoring-down: ## Stop Prometheus + Grafana
 	$(MONITORING_COMPOSE) down
