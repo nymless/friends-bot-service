@@ -1,7 +1,7 @@
 # compose.load.yml — VPS-like load-test profile (one cgroup, CPU/RAM limits).
 #
 # Two AB pairs (rebuild APP_IMAGE after checkout, reset DB when schema differs):
-#   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, scrape :METRICS_PORT/metrics (make METRICS_PORT=8001)
+#   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, make load-k6-polling → telegram-mock
 #   AB webhook — NGINX_ENABLED=1, BOT_MODE=webhook, k6 → http://localhost:LOAD_HTTP_PORT
 #
 # Switching main ↔ workers: make load-down-v, rebuild image, load-up (migrations differ).
@@ -11,6 +11,8 @@ services:
     build:
       context: .
       dockerfile: load/telegram-mock/Dockerfile
+    ports:
+      - "${LOAD_TELEGRAM_MOCK_PORT:-8081}:8081"
 
   vps-sim:
     image: friends-bot-vps-sim:local

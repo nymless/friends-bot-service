@@ -1,5 +1,5 @@
 .PHONY: help install install_prod run run_api docker-build load-build load-up load-down load-down-v load-logs \
-		load-seed load-restart load-k6 monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
+		load-seed load-restart load-k6 load-k6-polling monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
 		test type lint format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
 # ------------------------------------------------------------------------------
@@ -12,7 +12,10 @@ APP_IMAGE ?= $(IMAGE)
 COMPOSE_LOAD ?= compose.load.yml
 LOAD_ENV_FILE ?= .env.load
 LOAD_COMPOSE = docker compose --env-file $(LOAD_ENV_FILE) -f $(COMPOSE_LOAD)
+LOAD_NETWORK = friends-bot-service_default
 LOAD_HTTP_PORT ?= 8080
+LOAD_TELEGRAM_MOCK_PORT ?= 8081
+K6_IMAGE ?= grafana/k6:latest
 HOST ?= 127.0.0.1
 PORT ?= 8000
 METRICS_PORT ?= 8001
@@ -23,11 +26,13 @@ METRICS_BIND_PORT = $(METRICS_PORT)
 export HOST
 export PORT
 export METRICS_PORT
+export LOAD_TELEGRAM_MOCK_PORT
 export WEBHOOK_BIND_HOST
 export WEBHOOK_BIND_PORT
 export METRICS_BIND_HOST
 export METRICS_BIND_PORT
 MONITORING_COMPOSE = docker compose -f compose.monitoring.yml
+K6_DOCKER = docker run --rm -i --network $(LOAD_NETWORK) -v "$(CURDIR)/load/k6:/scripts" --env-file "$(CURDIR)/$(LOAD_ENV_FILE)" $(K6_IMAGE)
 
 # ------------------------------------------------------------------------------
 # Help
@@ -69,11 +74,14 @@ load-logs: ## Follow vps-sim logs
 load-seed: ## Insert synthetic bots (LOAD_* required in .env.load)
 	$(LOAD_COMPOSE) exec vps-sim gosu appuser bash -c "cd /app && PYTHONPATH=/app /app/.venv/bin/python -m load.seed_bots"
 
-load-restart: ## Restart vps-sim after seeding so webhooks reload from DB
+load-restart: ## Restart vps-sim after seeding so bots reload from DB
 	$(LOAD_COMPOSE) restart vps-sim
 
-load-k6: ## Run k6 stats webhook profile (k6 on PATH; reads .env.load)
-	k6 run --env-file $(LOAD_ENV_FILE) -e LOAD_BASE_URL=http://localhost:$(LOAD_HTTP_PORT) load/k6/webhook_stats.js
+load-k6: ## Run k6 webhook /stats profile in Docker (BOT_MODE=webhook)
+	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_stats.js
+
+load-k6-polling: ## Run k6 polling /stats profile in Docker (BOT_MODE=polling)
+	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_stats.js
 
 # ------------------------------------------------------------------------------
 # Monitoring
