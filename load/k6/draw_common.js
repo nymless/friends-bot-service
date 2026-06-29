@@ -1,10 +1,10 @@
-export function requiredEnv(name) {
-  const value = __ENV[name];
-  if (value === undefined || value === "") {
-    throw new Error(`missing required env: ${name} (set in .env.load)`);
-  }
-  return value;
-}
+import {
+  requiredEnv,
+  runContentionOptions,
+  runHappyOptions,
+} from "./env_common.js";
+
+export { requiredEnv, runHappyOptions, runContentionOptions };
 
 export function loadDrawConfig() {
   const botStart = Number(requiredEnv("LOAD_BOT_ID_START"));
@@ -53,22 +53,6 @@ export function buildMessageUpdate(updateId, botId, config) {
   };
 }
 
-export function runHappyOptions(botCount) {
-  return {
-    scenarios: {
-      draw_happy: {
-        executor: "per-vu-iterations",
-        vus: botCount,
-        iterations: 1,
-        maxDuration: "30m",
-      },
-    },
-    thresholds: {
-      http_req_failed: ["rate<0.01"],
-    },
-  };
-}
-
 export function loadContentionConfig() {
   const base = loadDrawConfig();
   const vus = Number(requiredEnv("LOAD_CONTENTION_VUS"));
@@ -77,20 +61,4 @@ export function loadContentionConfig() {
     __ENV.LOAD_CONTENTION_BOT_ID || String(base.botStart),
   );
   return { ...base, vus, iterations, targetBotId };
-}
-
-export function runContentionOptions(vus, iterations) {
-  return {
-    scenarios: {
-      draw_contention: {
-        executor: "shared-iterations",
-        vus,
-        iterations,
-        maxDuration: "10m",
-      },
-    },
-    thresholds: {
-      http_req_failed: ["rate<0.01"],
-    },
-  };
 }

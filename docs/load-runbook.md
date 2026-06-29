@@ -60,7 +60,7 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | webhook | `NGINX_ENABLED=1`, `BOT_MODE=webhook`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6` |
 | polling | `NGINX_ENABLED=0`, `BOT_MODE=polling`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6-polling` |
 
-**k6:** ramp ~50 RPS, 2 мин.
+**k6:** ramp до `LOAD_STATS_RPS_PEAK` (см. `.env.load`: `LOAD_STATS_STAGE_*`, опционально `LOAD_STATS_RPS_START`/`END` = peak÷5).
 **Ожидание:** `http_req_failed < 1%`; рост `friends_bot_handler_invocations_total{command="/stats"}`.
 
 ### Happy-path draw (`/run`)
@@ -70,7 +70,7 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | webhook | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT=2`, `LOAD_DRAW_COMMAND=/run` | `make load-k6-run` |
 | polling | то же + polling | `make load-k6-run-polling` |
 
-**k6:** `LOAD_BOT_COUNT` VU × 1 итерация — один `/run` на бота.
+**k6:** `LOAD_RUN_HAPPY_VUS` (default `LOAD_BOT_COUNT`) × 1 итерация — один `/run` на бота.
 **Ожидание k6:** `http_req_failed < 1%`.
 **Ожидание приложения** (за `[T0, T1]`):
 
@@ -93,7 +93,7 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 | webhook | `make load-k6-run-contention` |
 | polling | `make load-k6-run-contention-polling` |
 
-Параметры: `LOAD_CONTENTION_VUS` (параллелизм), `LOAD_CONTENTION_ITERATIONS` (всего запросов), опционально `LOAD_CONTENTION_BOT_ID` (default = `LOAD_BOT_ID_START`).
+Параметры: `LOAD_CONTENTION_VUS`, `LOAD_CONTENTION_ITERATIONS`, `LOAD_CONTENTION_MAX_DURATION`, опционально `LOAD_CONTENTION_BOT_ID` (default = `LOAD_BOT_ID_START`).
 
 **Ожидание k6:** `http_req_failed < 1%`.
 **Ожидание приложения:**
