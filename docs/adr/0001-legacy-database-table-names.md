@@ -30,9 +30,9 @@ Until then:
 ## Target rename (when done)
 
 | Current table | Intended name (TBD) |
-|---------------|---------------------|
-| `players`     | e.g. `draw_entrants` |
-| `stats`       | e.g. `draw_stats`    |
+| ------------- | ------------------- |
+| `players` | e.g. `draw_entrants` |
+| `stats` | e.g. `draw_stats` |
 
 Exact target names and migration steps to be defined in the ADR or issue that
 implements the rename.
@@ -42,7 +42,7 @@ implements the rename.
 - **Positive:** No migration risk on 1.x; code and docs are already aligned at the
   application layer.
 - **Negative:** Operators inspecting raw SQL see old names; new contributors must
-  read this ADR or README.
+  read this architecture decision record (ADR) or README.
 - **Neutral:** Alembic history and existing backups refer to `players` / `stats`.
 
 ## When to revisit

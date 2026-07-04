@@ -1,24 +1,10 @@
 # Load test runbook
 
-Пошаговый чеклист для воспроизводимых прогонов на ветке `feature/load-test`.
-Цели и метрики — [ADR 0003](adr/0003-load-testing-multi-worker-webhook.md).
-Инструментация приложения — [ADR 0004](adr/0004-production-observability.md).
+Пошаговый чеклист для воспроизводимых нагрузочных прогонов.
+Цели и метрики — [ADR 0003](adr/0003-load-testing-multi-worker-webhook.md) (архитектурное решение о нагрузочном тестировании).
+Инструментация приложения — [ADR 0004](adr/0004-production-observability.md) (метрики и наблюдаемость).
 
-## Две AB-матрицы
-
-Сначала **baseline на `main`** (текущая ветка `feature/load-test`), затем те же
-прогоны на `feature/workers` после переноса load-инфраструктуры. Одинаковый
-`.env.load` + `.env.k6`, сценарий, `load-down-v` → `load-up` → seed → restart → прогрев; меняется только код ветки.
-
-| AB | Режим | Вопрос | `.env.load` |
-| -- | ----- | ------ | ----------- |
-| **AB-1** | webhook | registry (main) vs db-first ingress + workers (`WORKER_COUNT`) | `NGINX_ENABLED=1`, `BOT_MODE=webhook` |
-| **AB-2** | polling | lock (main) vs DB **claim** (workers): стоимость claim на happy-path + страховка contention | `NGINX_ENABLED=0`, `BOT_MODE=polling` |
-
-**AB-1 — webhook:** все три профиля — `/stats`, happy-path `/run`, contention.
-**AB-2 — polling:** те же профили (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
-
-Не смешивать AB-1 и AB-2 в одном прогоне (разный `BOT_MODE`).
+Сравнение вариантов A/B (AB-1 / AB-2) — в конце документа, [§ AB-сравнение](#ab-сравнение-порядок-работ).
 
 ## Конфиг
 
@@ -42,17 +28,17 @@
 3. Поднять мониторинг (если ещё не): `make monitoring-up`.
 4. **Прогрев после load-restart:**
    - webhook: ~15–20 с, в логах `loading bots count=<LOAD_BOT_COUNT>`
-   - polling: ~30–60 с (100 long-poll на mock + отдельный dispatcher на бота)
+   - polling: ~30–60 с (100 длинных опросов (long-poll) к mock + отдельный диспетчер (dispatcher) на бота)
 
 ## Засечки времени (T0 / T1)
 
-Prometheus хранит историю на диске — для «чистого» среза прогона нужен интервал, а не пересоздание TSDB.
+Prometheus хранит историю на диске — для «чистого» среза прогона нужен интервал времени, а не пересоздание всей базы данных временных рядов (TSDB).
 
 | Момент | Когда фиксировать |
 | ------ | ----------------- |
-| **T0 / T1** | Блок `LOAD_TEST_T0` / `LOAD_TEST_T1` в **конце** вывода k6 (UTC) |
+| **T0 / T1** | Блок `LOAD_TEST_T0` / `LOAD_TEST_T1` в **конце** вывода k6 (время UTC) |
 
-В Grafana: time picker = `[T0, T1]`. В PromQL добавляйте `offset` или range внутри этого окна.
+В Grafana: выбор интервала (time picker) = `[T0, T1]`. В языке запросов Prometheus (PromQL) добавляйте `offset` или диапазон (range) внутри этого окна.
 
 ## Сценарии
 
@@ -67,18 +53,23 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | `/stats` | `LOAD_SEED_DRAW_ENTRANTS=false` | `LOAD_K6_COMMAND=/stats` |
 | `/run`, `/loser` | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT>=2` | `LOAD_K6_COMMAND=/run` или `/loser` |
 
-Для draw: боты крутятся (`__VU % botCount`); успешные draw нужны `LOAD_BOT_COUNT >= RPS × длительность плато`.
+Для draw: боты крутятся по формуле виртуального пользователя k6 (`__VU % botCount`); для успешных розыгрышей нужны `LOAD_BOT_COUNT >= RPS × длительность плато`, где RPS — запросов в секунду.
 
 | Режим | Команда |
 | ----- | ------- |
 | webhook | `make load-k6-ramp` |
 | polling | `make load-k6-ramp-polling` |
 
-**k6:** ramp до `LOAD_RAMP_RPS_PEAK`.
+**k6:** ramp до `LOAD_RAMP_RPS_PEAK` (пик запросов в секунду).
 **Ожидание k6:** `http_req_failed < 1%`.
-**Grafana:** окно до падения rate в ноль; handler — по `LOAD_K6_COMMAND`.
+**Grafana:** окно до падения скорости (rate) в ноль; обработчик (handler) — по `LOAD_K6_COMMAND`.
 
 ### Happy-path draw (`/run`)
+
+**Happy-path** (досл. «счастливый путь») — сценарий без отклонений: один `/run` на бота в свой chat,
+розыгрыш завершается успешно (`draw_completed`), без отказов `already_played`. Противоположность
+**contention** (много параллельных `/run` в один chat). **Ramp** — отдельный профиль нагрузки по RPS,
+не обязан давать только happy-path.
 
 | Режим | `.env.load` | Команда |
 | ----- | ----------- | ------- |
@@ -97,11 +88,11 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 # ≈ 0
 ```
 
-Дополнительно: `process_resident_memory_bytes`, `rate(process_cpu_seconds_total[1m])` на `:METRICS_PORT` (default 8001).
+Дополнительно: `process_resident_memory_bytes` (резидентная память процесса), `rate(process_cpu_seconds_total[1m])` (загрузка центрального процессора) на `:METRICS_PORT` (default 8001).
 
 ### Contention draw (один bot/chat)
 
-Только на **свежей БД** (после happy-path в те же боты чат уже «сыгран»).
+Только на **свежей базе данных (БД)** (после happy-path в те же боты чат уже «сыгран»).
 
 | Режим | Команда |
 | ----- | ------- |
@@ -128,9 +119,23 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 
 ## AB-сравнение: порядок работ
 
-### Фаза 1 — baseline (`main` / `feature/load-test`)
+Сначала базовый прогон (baseline) на `main`, затем те же прогоны на `feature/workers` после переноса
+load-инфраструктуры. Одинаковый `.env.load` + `.env.k6`, сценарий,
+`load-down-v` → `load-up` → seed → restart → прогрев; меняется только код ветки.
 
-1. Зафиксировать коммит/тег ветки в таблице результатов.
+| AB | Режим | Вопрос | `.env.load` |
+| -- | ----- | ------ | ----------- |
+| **AB-1** | webhook | реестр ботов в памяти (registry) на `main` vs webhook с запросом в БД на каждый update (db-first ingress) + несколько процессов (`WORKER_COUNT`) | `NGINX_ENABLED=1`, `BOT_MODE=webhook` |
+| **AB-2** | polling | блокировка в памяти (lock) на `main` vs захват розыгрыша через БД (claim) на workers: стоимость claim на happy-path + страховка при конкуренции (contention) | `NGINX_ENABLED=0`, `BOT_MODE=polling` |
+
+**AB-1 — webhook:** все три профиля — `/stats`, happy-path `/run`, contention.
+**AB-2 — polling:** те же профили (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
+
+Не смешивать AB-1 и AB-2 в одном прогоне (разный `BOT_MODE`).
+
+### Фаза 1 — baseline (`main`)
+
+1. Зафиксировать коммит/тег в таблице результатов.
 2. Для **AB-1:** webhook-конфиг, прогнать сценарии (`load-k6-ramp`, `load-k6-run`, …).
 3. Для **AB-2:** polling-конфиг, прогнать сценарии (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
 4. На каждый прогон: `load-down-v load-up` → wait → `load-seed load-restart` → прогрев → T0/T1 → метрики.

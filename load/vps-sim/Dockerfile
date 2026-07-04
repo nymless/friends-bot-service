@@ -1,5 +1,5 @@
-# Load-test / VPS simulation: PostgreSQL + optional nginx + app in one cgroup.
-# The application image stays DB- and nginx-free; only this wrapper adds them.
+# Load-test / virtual private server (VPS) simulation: PostgreSQL + optional nginx + app in one control group (cgroup).
+# The application image stays database- and nginx-free; only this wrapper adds them.
 ARG APP_IMAGE=friends-bot-service:local
 FROM ${APP_IMAGE} AS app
 

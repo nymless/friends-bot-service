@@ -1,10 +1,7 @@
-# compose.load.yml — VPS-like load-test profile (one cgroup, CPU/RAM limits).
-#
-# Two AB pairs (rebuild APP_IMAGE after checkout, reset DB when schema differs):
-#   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, make load-k6-ramp-polling or load-k6-run-polling
-#   AB webhook — NGINX_ENABLED=1, BOT_MODE=webhook, make load-k6-ramp or load-k6-run
-#
-# Switching main ↔ workers: make load-build, then load-down-v load-up.
+# compose.load.yml — load-test profile similar to a virtual private server (VPS):
+# one Linux control group (cgroup) with limits on central processing unit (CPU) and memory (RAM).
+# Config: .env.load (BOT_MODE, NGINX_ENABLED, resource limits). See docs/load-runbook.md.
+# Rebuild APP_IMAGE after code change; reset database: make load-down-v load-up.
 services:
   telegram-mock:
     image: friends-bot-telegram-mock:local

@@ -66,9 +66,9 @@ docker-build: ## Build the production application image (override: IMAGE=name:ta
 #
 #   .env.k6 changed → make load-k6*
 #
-#   Clean run (.env.load / code / AB):
+#   Clean run (.env.load / code change):
 #     make load-down-v load-up
-#     wait until logs show app ready (webhook ~20s, polling ~60s)
+#     wait until logs show app ready (webhook ~20s, polling ~60s for long-poll startup)
 #     make load-seed load-restart
 
 load-build: docker-build ## Rebuild app image + vps-sim wrapper

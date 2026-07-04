@@ -30,7 +30,7 @@ export function loadTestTeardown(data) {
   console.log(`LOAD_TEST_T0=${t0}`);
   console.log(`LOAD_TEST_T1=${t1}`);
   console.log(`LOAD_TEST_WINDOW=${t0} .. ${t1}`);
-  console.log("Grafana: [T0, T1 + ~15s] for webhook /run suspense tail");
+  console.log("Grafana: [T0, T1 + handler tail] — extend past T1 for /run suspense and polling drain");
   console.log("----------------------------------------------");
 }
 

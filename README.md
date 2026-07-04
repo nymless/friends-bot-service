@@ -202,16 +202,16 @@ make pre-commit  # run pre-commit on all files
 
 ## Observability
 
-Webhook mode exposes Prometheus metrics at `GET /metrics` (see ADR 0004).
+Webhook mode exposes Prometheus metrics at `GET /metrics` (see architecture decision record [ADR 0004](docs/adr/0004-production-observability.md)).
 
 Key series:
 
 - `friends_bot_webhook_request_duration_seconds` — HTTP latency by status
-- `friends_bot_handler_duration_seconds` — handler time by slash-command
+- `friends_bot_handler_duration_seconds` — request handler time by slash-command
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — draw outcomes
 - `friends_bot_db_errors_total` — database unavailable events
 
-Local Prometheus and Grafana (scrape `host.docker.internal:8000` while the app runs on
+Local Prometheus and Grafana (periodic metric collection (scrape) of `host.docker.internal:8000` while the app runs on
 the host):
 
 ```bash
@@ -222,7 +222,7 @@ Open Grafana at http://localhost:3000 (default login `admin` / `admin`), add pan
 for the metrics above, or import a dashboard later.
 
 Handler metrics also apply in polling mode; `/metrics` is available when the FastAPI
-webhook app is running.
+webhook application is running.
 
 ## Notes
 
