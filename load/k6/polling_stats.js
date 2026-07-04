@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { requiredEnv, statsRampOptions } from "./env_common.js";
+import { requiredEnv, statsRampOptions, loadTestSetup, loadTestTeardown } from "./env_common.js";
 
 const mockUrl = requiredEnv("LOAD_TELEGRAM_MOCK_URL");
 const botStart = Number(requiredEnv("LOAD_BOT_ID_START"));
@@ -11,8 +11,14 @@ const userIdBase = Number(requiredEnv("LOAD_USER_ID_BASE"));
 export const options = statsRampOptions(botCount);
 
 export function setup() {
+  const timing = loadTestSetup();
   const response = http.post(`${mockUrl}/_load/reset`);
   check(response, { "reset ok": (r) => r.status === 200 });
+  return timing;
+}
+
+export function teardown(data) {
+  loadTestTeardown(data);
 }
 
 export default function () {

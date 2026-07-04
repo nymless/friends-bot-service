@@ -12,6 +12,7 @@ wheels/
 # Environment variables
 .env
 .env.load
+.env.k6
 
 # SQLite database
 *.db
@@ -27,3 +28,6 @@ wheels/
 
 # draw.io
 *.bkp
+
+# load test results
+docs/load-results.md

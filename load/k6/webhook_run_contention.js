@@ -3,6 +3,8 @@ import { check } from "k6";
 import {
   buildMessageUpdate,
   loadContentionConfig,
+  loadTestSetup,
+  loadTestTeardown,
   requiredEnv,
   runContentionOptions,
 } from "./draw_common.js";
@@ -12,6 +14,14 @@ const baseUrl = requiredEnv("LOAD_BASE_URL");
 const secret = requiredEnv("WEBHOOK_SECRET_TOKEN");
 
 export const options = runContentionOptions(config.vus, config.iterations);
+
+export function setup() {
+  return loadTestSetup();
+}
+
+export function teardown(data) {
+  loadTestTeardown(data);
+}
 
 export default function () {
   const updateId = config.targetBotId * 1_000_000 + __ITER + 1;

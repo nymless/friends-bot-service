@@ -6,7 +6,7 @@ from friends_bot_service.infra.core.config import settings
 
 
 def create_bot(token: str) -> Bot:
-    """Build an aiogram Bot for registered game bots.
+    """Build an aiogram Bot (game bots and master bot in load tests).
 
     When ``TELEGRAM_API_BASE_URL`` is unset, uses the default Telegram API.
     When set, routes Bot API calls to that base URL instead.

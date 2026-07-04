@@ -24,6 +24,7 @@ from friends_bot_service.infra.observability import (
     start_metrics_server,
 )
 from friends_bot_service.infra.security import default_token_cipher
+from friends_bot_service.infra.telegram.bot_factory import create_bot
 
 _logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def create_master_runtime_components() -> tuple[Dispatcher, Bot]:
     """Builds runtime components for the master bot."""
 
     master_dp = dispatchers.get_master_bot_dispatcher()
-    master_bot = Bot(token=settings.MASTER_TOKEN)
+    master_bot = create_bot(settings.MASTER_TOKEN)
     return master_dp, master_bot
 
 

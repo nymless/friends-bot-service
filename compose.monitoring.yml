@@ -5,6 +5,7 @@ services:
       - "9090:9090"
     environment:
       PORT: ${METRICS_PORT:-8001}
+      SCRAPE_INTERVAL: ${SCRAPE_INTERVAL:-15s}
     volumes:
       - ./ops/prometheus/prometheus.yml.template:/etc/prometheus/prometheus.yml.template:ro
       - prometheus_data:/prometheus
@@ -14,7 +15,8 @@ services:
       - /bin/sh
       - -c
       - |
-        sed "s/__PORT__/$$PORT/" /etc/prometheus/prometheus.yml.template > /tmp/prometheus.yml
+        sed -e "s/__PORT__/$$PORT/" -e "s/__SCRAPE_INTERVAL__/$$SCRAPE_INTERVAL/" \
+          /etc/prometheus/prometheus.yml.template > /tmp/prometheus.yml
         exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
 
   grafana:

@@ -8,7 +8,7 @@
 
 Сначала **baseline на `main`** (текущая ветка `feature/load-test`), затем те же
 прогоны на `feature/workers` после переноса load-инфраструктуры. Одинаковый
-`.env.load`, сценарий, `load-down-v` → seed → прогрев; меняется только код ветки.
+`.env.load` + `.env.k6`, сценарий, `load-down-v` → `load-up` → seed → restart → прогрев; меняется только код ветки.
 
 | AB | Режим | Вопрос | `.env.load` |
 | -- | ----- | ------ | ----------- |
@@ -20,21 +20,27 @@
 
 Не смешивать AB-1 и AB-2 в одном прогоне (разный `BOT_MODE`).
 
+## Конфиг
+
+| Файл | После правки |
+| ---- | ------------ |
+| `.env.k6` | `make load-k6*` |
+| `.env.load` | `make load-down-v load-up` → wait → `make load-seed load-restart` |
+
 ## Перед любым прогоном
 
-1. Скопировать `.env.load.example` → `.env.load`, заполнить секреты.
-2. После смены кода приложения: `make docker-build load-build`.
-3. Поднять мониторинг (если ещё не): `make monitoring-up`.
-4. **Чистая БД** перед каждым вариантом сравнения:
+1. Скопировать `.env.load.example` → `.env.load`, `.env.k6.example` → `.env.k6`; заполнить секреты.
+2. Первый запуск / смена `.env.load` / смена кода:
 
    ```bash
-   make load-down-v
-   make load-up
-   make load-seed
-   make load-restart
+   make load-build          # только если менялся код
+   make load-down-v load-up
+   make load-logs           # дождаться готовности (см. ниже)
+   make load-seed load-restart
    ```
 
-5. **Прогрев после restart:**
+3. Поднять мониторинг (если ещё не): `make monitoring-up`.
+4. **Прогрев после load-restart:**
    - webhook: ~15–20 с, в логах `loading bots count=<LOAD_BOT_COUNT>`
    - polling: ~30–60 с (100 long-poll на mock + отдельный dispatcher на бота)
 
@@ -44,8 +50,7 @@ Prometheus хранит историю на диске — для «чистог
 
 | Момент | Когда фиксировать |
 | ------ | ----------------- |
-| **T0** | Сразу перед `make load-k6*` (или первая строка вывода k6) |
-| **T1** | k6 завершился + **~15 с** хвост (webhook 200 приходит до suspense `/run`) |
+| **T0 / T1** | Блок `LOAD_TEST_T0` / `LOAD_TEST_T1` в **конце** вывода k6 (UTC) |
 
 В Grafana: time picker = `[T0, T1]`. В PromQL добавляйте `offset` или range внутри этого окна.
 
@@ -60,7 +65,7 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | webhook | `NGINX_ENABLED=1`, `BOT_MODE=webhook`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6` |
 | polling | `NGINX_ENABLED=0`, `BOT_MODE=polling`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6-polling` |
 
-**k6:** ramp до `LOAD_STATS_RPS_PEAK` (см. `.env.load`: `LOAD_STATS_STAGE_*`, опционально `LOAD_STATS_RPS_START`/`END` = peak÷5).
+**k6:** ramp до `LOAD_STATS_RPS_PEAK` (см. `.env.k6`: `LOAD_STATS_STAGE_*`, опционально `LOAD_STATS_RPS_START`/`END` = peak÷5).
 **Ожидание:** `http_req_failed < 1%`; рост `friends_bot_handler_invocations_total{command="/stats"}`.
 
 ### Happy-path draw (`/run`)
@@ -118,11 +123,11 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 1. Зафиксировать коммит/тег ветки в таблице результатов.
 2. Для **AB-1:** webhook-конфиг, прогнать сценарии (`load-k6`, `load-k6-run`, …).
 3. Для **AB-2:** polling-конфиг, прогнать сценарии (`load-k6-polling`, `load-k6-run-polling`, **`load-k6-run-contention-polling`**).
-4. На каждый прогон: `load-down-v` → seed → restart → прогрев → T0/T1 → метрики.
+4. На каждый прогон: `load-down-v load-up` → wait → `load-seed load-restart` → прогрев → T0/T1 → метрики.
 
 ### Фаза 2 — `feature/workers`
 
-1. Вмержить load stack, `make docker-build load-build`, `load-down-v load-up`.
+1. Вмержить load stack, `make load-build`, затем clean run (`load-down-v load-up` → seed → restart).
 2. Повторить **те же** команды и сценарии для AB-1 (webhook) и AB-2 (polling).
 3. Сравнить строки в `docs/load-results.md` (или своей таблице) внутри одного AB и одного сценария.
 
@@ -134,11 +139,7 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 
 ## Куда писать результаты
 
-Отдельный файл (по желанию): `docs/load-results.md` — одна строка на прогон:
-
-| date | branch | AB | scenario | BOT_MODE | T0–T1 | draw_completed | already_played | k6 errors | notes |
-
-Сырые логи k6 — в `load/results/` (можно в `.gitignore`), в git — только сводная таблица.
+Отдельный файл: [load-results.md](load-results.md) — таблица прогонов (копируйте строку-пример).
 
 ## Быстрая диагностика
 

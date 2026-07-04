@@ -3,6 +3,8 @@ import { check } from "k6";
 import {
   buildMessageUpdate,
   loadDrawConfig,
+  loadTestSetup,
+  loadTestTeardown,
   requiredEnv,
   runHappyOptions,
 } from "./draw_common.js";
@@ -13,8 +15,14 @@ const mockUrl = requiredEnv("LOAD_TELEGRAM_MOCK_URL");
 export const options = runHappyOptions(config.botCount);
 
 export function setup() {
+  const timing = loadTestSetup();
   const response = http.post(`${mockUrl}/_load/reset`);
   check(response, { "reset ok": (r) => r.status === 200 });
+  return timing;
+}
+
+export function teardown(data) {
+  loadTestTeardown(data);
 }
 
 export default function () {

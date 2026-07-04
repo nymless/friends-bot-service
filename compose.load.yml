@@ -4,7 +4,7 @@
 #   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, make load-k6-polling or load-k6-run-polling
 #   AB webhook — NGINX_ENABLED=1, BOT_MODE=webhook, make load-k6 or load-k6-run
 #
-# Switching main ↔ workers: make load-down-v, rebuild image, load-up (migrations differ).
+# Switching main ↔ workers: make load-build, then load-down-v load-up.
 services:
   telegram-mock:
     image: friends-bot-telegram-mock:local
@@ -28,7 +28,7 @@ services:
         required: false
     environment:
       TELEGRAM_API_BASE_URL: http://telegram-mock:8081
-      # Derived from POSTGRES_* in .env.load (for app, alembic, make load-seed exec).
+      # Derived from POSTGRES_* in .env.load (app, alembic, make load-seed).
       DB_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}
     ports:
       - "${LOAD_HTTP_PORT:-8080}:80"

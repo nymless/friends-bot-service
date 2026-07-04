@@ -4,7 +4,7 @@ import {
   runHappyOptions,
 } from "./env_common.js";
 
-export { requiredEnv, runHappyOptions, runContentionOptions };
+export { requiredEnv, runHappyOptions, runContentionOptions, loadTestSetup, loadTestTeardown } from "./env_common.js";
 
 export function loadDrawConfig() {
   const botStart = Number(requiredEnv("LOAD_BOT_ID_START"));

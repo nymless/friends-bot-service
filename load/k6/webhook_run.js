@@ -3,6 +3,8 @@ import { check } from "k6";
 import {
   buildMessageUpdate,
   loadDrawConfig,
+  loadTestSetup,
+  loadTestTeardown,
   requiredEnv,
   runHappyOptions,
 } from "./draw_common.js";
@@ -12,6 +14,14 @@ const baseUrl = requiredEnv("LOAD_BASE_URL");
 const secret = requiredEnv("WEBHOOK_SECRET_TOKEN");
 
 export const options = runHappyOptions(config.botCount);
+
+export function setup() {
+  return loadTestSetup();
+}
+
+export function teardown(data) {
+  loadTestTeardown(data);
+}
 
 export default function () {
   const botId = config.botStart + (__VU - 1);

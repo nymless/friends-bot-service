@@ -1,6 +1,6 @@
 import http from "k6/http";
 import { check, sleep } from "k6";
-import { requiredEnv, statsRampOptions } from "./env_common.js";
+import { requiredEnv, statsRampOptions, loadTestSetup, loadTestTeardown } from "./env_common.js";
 
 const baseUrl = requiredEnv("LOAD_BASE_URL");
 const secret = requiredEnv("WEBHOOK_SECRET_TOKEN");
@@ -10,6 +10,14 @@ const chatIdBase = Number(requiredEnv("LOAD_CHAT_ID_BASE"));
 const userIdBase = Number(requiredEnv("LOAD_USER_ID_BASE"));
 
 export const options = statsRampOptions(botCount);
+
+export function setup() {
+  return loadTestSetup();
+}
+
+export function teardown(data) {
+  loadTestTeardown(data);
+}
 
 export default function () {
   const botId = botStart + (__VU % botCount);

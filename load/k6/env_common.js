@@ -1,7 +1,7 @@
 export function requiredEnv(name) {
   const value = __ENV[name];
   if (value === undefined || value === "") {
-    throw new Error(`missing required env: ${name} (set in .env.load)`);
+    throw new Error(`missing required env: ${name} (set in .env.load or .env.k6)`);
   }
   return value;
 }
@@ -16,6 +16,22 @@ export function optionalEnv(name, defaultValue) {
 
 export function envInt(name, defaultValue) {
   return Number(optionalEnv(name, String(defaultValue)));
+}
+
+/** UTC timestamps for Grafana/Prometheus window (printed together at test end). */
+export function loadTestSetup() {
+  return { t0: new Date().toISOString() };
+}
+
+export function loadTestTeardown(data) {
+  const t0 = data?.t0 ?? "unknown";
+  const t1 = new Date().toISOString();
+  console.log("--- load-test window (UTC, copy to Grafana) ---");
+  console.log(`LOAD_TEST_T0=${t0}`);
+  console.log(`LOAD_TEST_T1=${t1}`);
+  console.log(`LOAD_TEST_WINDOW=${t0} .. ${t1}`);
+  console.log("Grafana: [T0, T1 + ~15s] for webhook /run suspense tail");
+  console.log("----------------------------------------------");
 }
 
 const HTTP_THRESHOLD = {

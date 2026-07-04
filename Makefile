@@ -12,14 +12,20 @@ LOAD_IMAGE ?= friends-bot-vps-sim:local
 APP_IMAGE ?= $(IMAGE)
 COMPOSE_LOAD ?= compose.load.yml
 LOAD_ENV_FILE ?= .env.load
+K6_ENV_FILE ?= .env.k6
 LOAD_COMPOSE = docker compose --env-file $(LOAD_ENV_FILE) -f $(COMPOSE_LOAD)
 LOAD_NETWORK = friends-bot-service_default
 LOAD_HTTP_PORT ?= 8080
 LOAD_TELEGRAM_MOCK_PORT ?= 8081
 K6_IMAGE ?= grafana/k6:latest
+K6_ENV_FILES = --env-file "$(CURDIR)/$(LOAD_ENV_FILE)"
+ifneq (,$(wildcard $(K6_ENV_FILE)))
+K6_ENV_FILES += --env-file "$(CURDIR)/$(K6_ENV_FILE)"
+endif
 HOST ?= 127.0.0.1
 PORT ?= 8000
 METRICS_PORT ?= 8001
+SCRAPE_INTERVAL ?= 15s
 WEBHOOK_BIND_HOST = $(HOST)
 WEBHOOK_BIND_PORT = $(PORT)
 METRICS_BIND_HOST = $(HOST)
@@ -27,13 +33,14 @@ METRICS_BIND_PORT = $(METRICS_PORT)
 export HOST
 export PORT
 export METRICS_PORT
+export SCRAPE_INTERVAL
 export LOAD_TELEGRAM_MOCK_PORT
 export WEBHOOK_BIND_HOST
 export WEBHOOK_BIND_PORT
 export METRICS_BIND_HOST
 export METRICS_BIND_PORT
 MONITORING_COMPOSE = docker compose -f compose.monitoring.yml
-K6_DOCKER = docker run --rm -i --network $(LOAD_NETWORK) -v "$(CURDIR)/load/k6:/scripts" --env-file "$(CURDIR)/$(LOAD_ENV_FILE)" $(K6_IMAGE)
+K6_DOCKER = docker run --rm -i --network $(LOAD_NETWORK) -v "$(CURDIR)/load/k6:/scripts" $(K6_ENV_FILES) $(K6_IMAGE)
 
 # ------------------------------------------------------------------------------
 # Help
@@ -56,38 +63,45 @@ docker-build: ## Build the production application image (override: IMAGE=name:ta
 # ------------------------------------------------------------------------------
 
 ##@ Load test
+#
+#   .env.k6 changed → make load-k6*
+#
+#   Clean run (.env.load / code / AB):
+#     make load-down-v load-up
+#     wait until logs show app ready (webhook ~20s, polling ~60s)
+#     make load-seed load-restart
 
-load-build: docker-build ## Build vps-sim image (override: LOAD_IMAGE=tag APP_IMAGE=tag)
+load-build: docker-build ## Rebuild app image + vps-sim wrapper
 	docker build -f load/vps-sim/Dockerfile -t $(LOAD_IMAGE) --build-arg APP_IMAGE=$(APP_IMAGE) .
 
-load-up: ## Start vps-sim (copy .env.load.example to .env.load first)
+load-up: ## Start load stack from .env.load
 	$(LOAD_COMPOSE) up -d --build
 
-load-down: ## Stop vps-sim and remove containers
+load-down: ## Stop load stack
 	$(LOAD_COMPOSE) down
 
-load-down-v: ## Stop vps-sim and delete Postgres volume (required when POSTGRES_* changes)
+load-down-v: ## Stop stack and delete Postgres volume
 	$(LOAD_COMPOSE) down -v
 
 load-logs: ## Follow vps-sim logs
 	$(LOAD_COMPOSE) logs -f vps-sim
 
-load-seed: ## Insert synthetic bots (LOAD_* required in .env.load)
+load-seed: ## Seed bots from .env.load (run after load-up, when Postgres is ready)
 	$(LOAD_COMPOSE) exec vps-sim gosu appuser bash -c "cd /app && PYTHONPATH=/app /app/.venv/bin/python -m load.seed_bots"
 
-load-restart: ## Restart vps-sim after seeding so bots reload from DB
+load-restart: ## Reload app in-memory bot list after seed
 	$(LOAD_COMPOSE) restart vps-sim
 
-load-k6: ## Run k6 webhook /stats profile in Docker (BOT_MODE=webhook)
+load-k6: ## Run k6 webhook /stats (BOT_MODE=webhook)
 	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_stats.js
 
-load-k6-polling: ## Run k6 polling /stats profile in Docker (BOT_MODE=polling)
+load-k6-polling: ## Run k6 polling /stats (BOT_MODE=polling; reads .env.k6, no stack reload)
 	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_stats.js
 
-load-k6-run: ## Run k6 webhook happy-path draw (LOAD_SEED_DRAW_ENTRANTS=true, BOT_MODE=webhook)
+load-k6-run: ## Run k6 webhook happy-path /run (LOAD_SEED_DRAW_ENTRANTS=true)
 	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_run.js
 
-load-k6-run-polling: ## Run k6 polling happy-path draw (LOAD_SEED_DRAW_ENTRANTS=true, BOT_MODE=polling)
+load-k6-run-polling: ## Run k6 polling happy-path /run (LOAD_SEED_DRAW_ENTRANTS=true)
 	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_run.js
 
 load-k6-run-contention: ## Run k6 webhook draw contention on one bot/chat
@@ -102,10 +116,10 @@ load-k6-run-contention-polling: ## Run k6 polling draw contention on one bot/cha
 
 ##@ Monitoring
 
-monitoring-up: ## Start Prometheus + Grafana (override: METRICS_PORT=8001 — matches metrics bind)
+monitoring-up: ## Start Prometheus + Grafana (METRICS_PORT, SCRAPE_INTERVAL)
 	$(MONITORING_COMPOSE) up -d
 
-monitoring-up-load: ## Same as monitoring-up (METRICS_PORT from Makefile)
+monitoring-up-load: ## Same as monitoring-up
 	$(MONITORING_COMPOSE) up -d
 
 monitoring-down: ## Stop Prometheus + Grafana
