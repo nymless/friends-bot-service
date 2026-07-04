@@ -4,12 +4,20 @@ services:
     ports:
       - "9090:9090"
     environment:
-      SCRAPE_PORT: ${SCRAPE_PORT:-8000}
+      PORT: ${METRICS_PORT:-8001}
+      SCRAPE_INTERVAL: ${SCRAPE_INTERVAL:-15s}
     volumes:
-      - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/prometheus.yml.template:/etc/prometheus/prometheus.yml.template:ro
       - prometheus_data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sed -e "s/__PORT__/$$PORT/" -e "s/__SCRAPE_INTERVAL__/$$SCRAPE_INTERVAL/" \
+          /etc/prometheus/prometheus.yml.template > /tmp/prometheus.yml
+        exec /bin/prometheus --config.file=/tmp/prometheus.yml --storage.tsdb.path=/prometheus
 
   grafana:
     image: grafana/grafana:11.5.2

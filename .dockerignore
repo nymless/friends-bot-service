@@ -1,0 +1,31 @@
+# Git and editor
+.git
+.gitignore
+.cursor
+
+# Python / tooling caches
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+
+# Local secrets and data
+.env
+*.db
+
+# Docs and dev-only (not needed in the image)
+docs/
+tests/
+.pre-commit-config.yaml
+
+# k6 scripts (not needed in the production app image)
+load/k6/
+
+# Compose profiles (run separately from the app image)
+compose.load.yml
+compose.monitoring.yml
+ops/

@@ -104,8 +104,8 @@ Notes:
 - `WEBHOOK_SECRET_TOKEN` is required in webhook mode and is used to verify that webhook requests really come from Telegram.
 - `ENCRYPTION_KEY` should be a valid Fernet key.
 - Connected draw bots are added later through the master bot, not through `.env`.
-- `REGISTRATION_ENABLED=true` disables both `/reg` and `/add_bot`, including repeated registrations, until the service is restarted with the flag enabled again.
-- `LOG_INBOUND_COMMANDS=false` logs inbound slash-commands before handlers (access log).
+- `REGISTRATION_ENABLED=false` disables both `/reg` and `/add_bot`, including repeated registrations, until the service is restarted with the flag enabled again.
+- `LOG_INBOUND_COMMANDS=true` logs inbound slash-commands before handlers (access log).
 
 ## Installation
 
@@ -204,26 +204,33 @@ make pre-commit  # run pre-commit on all files
 
 ## Observability
 
-Webhook mode exposes Prometheus metrics at `GET /metrics` (see ADR 0004).
+Prometheus metrics (see [ADR 0004](docs/adr/0004-production-observability.md)):
+
+- **Webhook mode:** `GET /metrics` on the webhook port (`WEBHOOK_BIND_PORT`, default `8000`).
+  With `WORKER_COUNT > 1`, counters and histograms are aggregated across workers via
+  `prometheus_client` multiprocess mode.
+- **Polling mode:** dedicated metrics server on `METRICS_BIND_PORT` (default `8001`).
 
 Key series:
 
 - `friends_bot_webhook_request_duration_seconds` — HTTP latency by status
-- `friends_bot_handler_duration_seconds` — handler time by slash-command
+- `friends_bot_handler_duration_seconds` — request handler time by slash-command
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — draw outcomes
 - `friends_bot_db_errors_total` — database unavailable events
 
-Local Prometheus and Grafana (use the same `PORT` as `make run`):
+Local Prometheus and Grafana scrape `host.docker.internal` while the app runs on
+the host. Set `METRICS_PORT` to the scrape target port (`8000` for webhook,
+`8001` for polling):
 
 ```bash
-make monitoring-up PORT=80   # optional; default 8000
+make monitoring-up              # polling default (METRICS_PORT=8001)
+make monitoring-up METRICS_PORT=8000   # webhook /metrics on app port
 ```
 
 Open Grafana at <http://localhost:3000> (default login `admin` / `admin`), add panels
 for the metrics above, or import a dashboard later.
 
-Handler metrics also apply in polling mode; `/metrics` is available when the FastAPI
-webhook app is running.
+Handler metrics apply in both modes; webhook HTTP metrics only in webhook mode.
 
 ## Database connection budget
 

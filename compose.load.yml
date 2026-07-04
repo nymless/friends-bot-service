@@ -1,0 +1,43 @@
+# compose.load.yml — load-test profile similar to a virtual private server (VPS):
+# one Linux control group (cgroup) with limits on central processing unit (CPU) and memory (RAM).
+# Config: .env.load (BOT_MODE, NGINX_ENABLED, resource limits). See docs/load-runbook.md.
+# Rebuild APP_IMAGE after code change; reset database: make load-down-v load-up.
+services:
+  telegram-mock:
+    image: friends-bot-telegram-mock:local
+    build:
+      context: .
+      dockerfile: load/telegram-mock/Dockerfile
+    ports:
+      - "${LOAD_TELEGRAM_MOCK_PORT:-8081}:8081"
+
+  vps-sim:
+    image: friends-bot-vps-sim:local
+    build:
+      context: .
+      dockerfile: load/vps-sim/Dockerfile
+      args:
+        APP_IMAGE: ${APP_IMAGE:-friends-bot-service:local}
+    depends_on:
+      - telegram-mock
+    env_file:
+      - path: .env.load
+        required: false
+    environment:
+      TELEGRAM_API_BASE_URL: http://telegram-mock:8081
+      # Derived from POSTGRES_* in .env.load (app, alembic, make load-seed).
+      DB_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:5432/${POSTGRES_DB}
+    ports:
+      - "${LOAD_HTTP_PORT:-8080}:80"
+      - "${LOAD_APP_PORT:-8000}:8000"
+      - "${METRICS_PORT:-8001}:8001"
+    volumes:
+      - vps_sim_pgdata:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          cpus: "${VPS_SIM_CPUS:-1}"
+          memory: ${VPS_SIM_MEMORY:-2g}
+
+volumes:
+  vps_sim_pgdata:

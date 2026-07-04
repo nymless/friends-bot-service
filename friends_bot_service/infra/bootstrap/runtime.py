@@ -21,9 +21,13 @@ from friends_bot_service.infra.bot_manager.webhook import WebhookBotManager
 from friends_bot_service.infra.core.config import settings
 from friends_bot_service.infra.core.database import log_db_pool_budget
 from friends_bot_service.infra.enums.enums import BotMode
-from friends_bot_service.infra.observability import setup_webhook_observability
+from friends_bot_service.infra.observability import (
+    setup_webhook_observability,
+    start_metrics_server,
+)
 from friends_bot_service.infra.observability.multiproc import mark_current_process_dead
 from friends_bot_service.infra.security import default_token_cipher
+from friends_bot_service.infra.telegram.bot_factory import create_bot
 
 _logger = logging.getLogger(__name__)
 
@@ -75,7 +79,7 @@ def create_master_runtime_components() -> tuple[Dispatcher, Bot]:
     """Builds runtime components for the master bot."""
 
     master_dp = dispatchers.get_master_bot_dispatcher()
-    master_bot = Bot(token=settings.MASTER_TOKEN)
+    master_bot = create_bot(settings.MASTER_TOKEN)
     return master_dp, master_bot
 
 
@@ -124,6 +128,16 @@ async def run_polling() -> None:
     if settings.BOT_MODE == BotMode.WEBHOOK:
         _logger.critical("invalid mode for polling app, exiting")
         sys.exit(1)
+
+    start_metrics_server(
+        host=settings.METRICS_BIND_HOST,
+        port=settings.METRICS_BIND_PORT,
+    )
+    _logger.info(
+        "metrics server started host=%s port=%s",
+        settings.METRICS_BIND_HOST,
+        settings.METRICS_BIND_PORT,
+    )
 
     manager, master_dp, master_bot = create_polling_runtime_components()
     master_context = MasterBotPollingContext(manager=manager)

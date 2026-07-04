@@ -104,7 +104,7 @@ LOG_INBOUND_COMMANDS=false
 - `WEBHOOK_SECRET_TOKEN` обязателен в режиме webhook и используется для проверки, что запросы действительно приходят от Telegram.
 - `ENCRYPTION_KEY` должен быть корректным Fernet-ключом.
 - Игровые боты добавляются позже через мастер-бота, а не через `.env`.
-- `REGISTRATION_ENABLED=true` отключает и `/reg`, и `/add_bot`, включая повторные регистрации, до следующего запуска сервиса с включённым флагом.
+- `REGISTRATION_ENABLED=false` отключает и `/reg`, и `/add_bot`, включая повторные регистрации, до следующего запуска сервиса с включённым флагом.
 - `LOG_INBOUND_COMMANDS=true` пишет access-log входящих команд с `/` до хендлеров.
 
 ## Установка
@@ -204,24 +204,32 @@ make pre-commit  # прогнать pre-commit по всем файлам
 
 ## Наблюдаемость
 
-В webhook-режиме метрики Prometheus доступны на `GET /metrics` (см. ADR 0004).
+Метрики Prometheus (см. [ADR 0004](docs/adr/0004-production-observability.md)):
+
+- **Webhook:** `GET /metrics` на порту вебхука (`WEBHOOK_BIND_PORT`, по умолчанию `8000`).
+  При `WORKER_COUNT > 1` счётчики и гистограммы агрегируются между workers через
+  multiprocess-режим `prometheus_client`.
+- **Polling:** отдельный сервер метрик на `METRICS_BIND_PORT` (по умолчанию `8001`).
 
 Основные серии:
 
 - `friends_bot_webhook_request_duration_seconds` — задержка HTTP по статусу
-- `friends_bot_handler_duration_seconds` — время хендлера по slash-команде
+- `friends_bot_handler_duration_seconds` — время обработчика (handler) по slash-команде
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — исходы розыгрыша
 - `friends_bot_db_errors_total` — недоступность базы
 
-Локально Prometheus и Grafana (тот же `PORT`, что у `make run`):
+Локально Prometheus и Grafana собирают метрики с `host.docker.internal`, пока
+приложение на хосте. Задайте `METRICS_PORT` как порт scrape (`8000` для webhook,
+`8001` для polling):
 
 ```bash
-make monitoring-up PORT=80   # опционально; по умолчанию 8000
+make monitoring-up              # polling по умолчанию (METRICS_PORT=8001)
+make monitoring-up METRICS_PORT=8000   # webhook /metrics на порту приложения
 ```
 
 Grafana: <http://localhost:3000> (логин по умолчанию `admin` / `admin`).
 
-Метрики хендлеров работают и в polling; `/metrics` — когда запущено FastAPI webhook-приложение.
+Метрики обработчиков (handler) есть в обоих режимах; HTTP-метрики вебхука — только в webhook.
 
 ## Бюджет соединений с БД
 

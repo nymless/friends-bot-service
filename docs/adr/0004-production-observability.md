@@ -13,9 +13,9 @@ ADR 0003 (load testing) needs the **same** metrics in synthetic runs and in
 production. Building load-test-only instrumentation would duplicate effort and
 produce incomparable numbers.
 
-Multi-worker webhook sizing (ADR 0002, on `feature/workers` until merge to
-`main`) is a separate concern. Observability **does not depend** on
-`WORKER_COUNT > 1` and should land on `main` first via `feature/observability`.
+ADR 0002 (multi-worker webhook) adds `prometheus_client` multiprocess aggregation
+when `WORKER_COUNT > 1`. Polling mode keeps a dedicated metrics server on
+`METRICS_BIND_PORT`.
 
 ## Decision
 
@@ -23,9 +23,9 @@ Add **Prometheus-style application metrics** exposed from the service via `GET /
 (`prometheus_client` in-process). Implementation lives in a dedicated
 `infra/observability` package with thin hooks in bootstrap code.
 
-**Prometheus and Grafana are not deployed on the production VPS.** They run
+**Prometheus and Grafana are not deployed on the production virtual private server (VPS).** They run
 **locally** (`docker-compose.monitoring.yml`) when needed — load tests (ADR 0003),
-manual debugging, PromQL analysis. The deployed app only exposes `/metrics`; scrape
+manual debugging, Prometheus query language (PromQL) analysis. The deployed app only exposes `/metrics`; scrape
 target is configured on the dev machine (e.g. `host.docker.internal` or tunnel).
 
 Grafana dashboards and alert rules are **optional**; PromQL in Prometheus is
@@ -35,7 +35,7 @@ sufficient for Phase 1 and ADR 0003.
 
 | Area | What to measure |
 | ---- | ---------------- |
-| **Ingress** | Webhook request duration (response status), RPS, 403/5xx rate |
+| **Ingress** | Incoming webhook request duration (response status), requests per second (RPS), 403/5xx rate |
 | **Handlers** | Per-command or per-handler duration and count (`/run`, `/reg`, master commands, …) |
 | **Draw flow** | Draw completed vs rejected (`already_played`, `not_registered`, …) |
 | **Database** | `db_errors_total` in Phase 1; pool/saturation gauges deferred until load tests show a need |
@@ -44,7 +44,7 @@ sufficient for Phase 1 and ADR 0003.
 ### Non-goals (initial phase)
 
 - Distributed tracing (OpenTelemetry / Jaeger) — defer unless histograms are insufficient
-- High-cardinality labels (`chat_id`, `user_id`) on Prometheus series — use logs or SQL for per-chat forensics
+- High-cardinality labels (`chat_id`, `user_id`) on Prometheus series — too many distinct label values; use logs or SQL for per-chat forensics
 - Product analytics warehouse (ClickHouse, etc.)
 - Metrics in CI by default — optional later
 
@@ -87,7 +87,7 @@ FastAPI webhook app runs (`make run` webhook or `make run_api`).
 | Component | Where | Role |
 | --------- | ----- | ---- |
 | `prometheus_client` | App (VPS or local) | In-process metrics; `GET /metrics` on webhook app |
-| Prometheus | **Local** (compose) | Scrape `/metrics` on an interval; TSDB history; PromQL |
+| Prometheus | **Local** (compose) | Scrape `/metrics` on an interval; time-series database (TSDB) history; PromQL |
 | Grafana | **Local** (compose), optional | Dashboards; not required if PromQL suffices |
 
 Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_PORT`).
@@ -120,9 +120,9 @@ Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_
 ## Consequences
 
 - **Positive:** Real user experience visible without manual testing; ADR 0003 uses
-  one source of truth for latency and RPS.
+  one source of truth for latency and requests per second (RPS).
 - **Negative:** Label discipline required to avoid cardinality blow-up; local
-  Prometheus/Grafana stack when analysing runs (not on prod VPS).
+  Prometheus/Grafana stack when analysing runs (not on production VPS).
 - **Neutral:** Logs (`LOG_INBOUND_COMMANDS`) remain for audit; metrics complement,
   not replace, logs.
 
@@ -133,10 +133,10 @@ Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_
 - `docker-compose.monitoring.yml` for **local** Prometheus + Grafana — **done**
 - README section: metric names and local `make monitoring-up` — **done**
 - Example Grafana dashboard JSON — optional (Phase 2)
-- Prod VPS: app ships with `/metrics`; no Prometheus/Grafana co-located on VPS
+- Prod VPS: app ships with `/metrics`; no Prometheus/Grafana co-located on the production server
 
 ## When to revisit
 
 - Phase 1 merged to `main` → set ADR to **Accepted / Phase 1**.
-- ADR 0003 completed → add documented RPS/worker assumptions to README or this ADR.
+- ADR 0003 completed → add documented RPS (requests per second) / worker assumptions to README or this ADR.
 - Need per-request traces across DB and Telegram → new ADR or Phase 4 for OpenTelemetry.

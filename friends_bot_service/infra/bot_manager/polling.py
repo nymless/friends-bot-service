@@ -7,6 +7,7 @@ from contextlib import suppress
 from aiogram import Bot, Dispatcher
 
 from friends_bot_service.infra.bot_manager.base import BotManager
+from friends_bot_service.infra.telegram import create_bot
 
 _logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class PollingBotManager(BotManager):
     async def start_bot(self, token: str) -> Bot:
         """Starts a bot with polling."""
 
-        bot = Bot(token=token)
+        bot = create_bot(token)
         bot_user = await bot.get_me()
 
         if bot_user.id in self._tasks:
