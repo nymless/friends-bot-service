@@ -1,8 +1,8 @@
 # compose.load.yml — VPS-like load-test profile (one cgroup, CPU/RAM limits).
 #
 # Two AB pairs (rebuild APP_IMAGE after checkout, reset DB when schema differs):
-#   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, make load-k6-polling or load-k6-run-polling
-#   AB webhook — NGINX_ENABLED=1, BOT_MODE=webhook, make load-k6 or load-k6-run
+#   AB polling — NGINX_ENABLED=0, BOT_MODE=polling, make load-k6-ramp-polling or load-k6-run-polling
+#   AB webhook — NGINX_ENABLED=1, BOT_MODE=webhook, make load-k6-ramp or load-k6-run
 #
 # Switching main ↔ workers: make load-build, then load-down-v load-up.
 services:

@@ -4,7 +4,13 @@ import {
   runHappyOptions,
 } from "./env_common.js";
 
-export { requiredEnv, runHappyOptions, runContentionOptions, loadTestSetup, loadTestTeardown } from "./env_common.js";
+export {
+  requiredEnv,
+  runHappyOptions,
+  runContentionOptions,
+  loadTestSetup,
+  loadTestTeardown,
+} from "./env_common.js";
 
 export function loadDrawConfig() {
   const botStart = Number(requiredEnv("LOAD_BOT_ID_START"));
@@ -12,7 +18,7 @@ export function loadDrawConfig() {
   const chatIdBase = Number(requiredEnv("LOAD_CHAT_ID_BASE"));
   const userIdBase = Number(requiredEnv("LOAD_USER_ID_BASE"));
   const playersPerChat = Number(requiredEnv("LOAD_PLAYERS_PER_CHAT"));
-  const command = requiredEnv("LOAD_DRAW_COMMAND");
+  const command = requiredEnv("LOAD_K6_COMMAND");
   return {
     botStart,
     botCount,

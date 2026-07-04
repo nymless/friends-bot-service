@@ -41,6 +41,27 @@ def _get_updates(port: int, token: str, *, offset: int = 0, timeout: int = 0) ->
     return data["result"]
 
 
+def test_send_chat_action_returns_bool():
+    mock_server.reset_queues()
+    server = mock_server.ThreadingHTTPServer(
+        ("127.0.0.1", 0),
+        mock_server.TelegramMockHandler,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    token = "1000000:AAloadtestfake"
+
+    try:
+        data = _post_json(
+            f"http://127.0.0.1:{port}/bot{token}/sendChatAction",
+            {"chat_id": 1, "action": "typing"},
+        )
+        assert data == {"ok": True, "result": True}
+    finally:
+        server.shutdown()
+
+
 def test_get_updates_returns_injected_update():
     mock_server.reset_queues()
     server = mock_server.ThreadingHTTPServer(

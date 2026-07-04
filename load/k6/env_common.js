@@ -41,26 +41,26 @@ const HTTP_THRESHOLD = {
 };
 
 /** Ramp: startRate → peak (ramp up) → peak (plateau) → end (ramp down). */
-export function statsRampOptions(botCount) {
-  const peak = Number(requiredEnv("LOAD_STATS_RPS_PEAK"));
+export function rampOptions(botCount, scenarioName = "ramp") {
+  const peak = Number(requiredEnv("LOAD_RAMP_RPS_PEAK"));
   const wing = Math.max(1, Math.round(peak / 5));
-  const start = envInt("LOAD_STATS_RPS_START", wing);
-  const end = envInt("LOAD_STATS_RPS_END", wing);
-  const rampUp = optionalEnv("LOAD_STATS_STAGE_RAMP_UP", "30s");
-  const plateau = optionalEnv("LOAD_STATS_STAGE_PLATEAU", "1m");
-  const rampDown = optionalEnv("LOAD_STATS_STAGE_RAMP_DOWN", "30s");
+  const start = envInt("LOAD_RAMP_RPS_START", wing);
+  const end = envInt("LOAD_RAMP_RPS_END", wing);
+  const rampUp = optionalEnv("LOAD_RAMP_STAGE_RAMP_UP", "30s");
+  const plateau = optionalEnv("LOAD_RAMP_STAGE_PLATEAU", "1m");
+  const rampDown = optionalEnv("LOAD_RAMP_STAGE_RAMP_DOWN", "30s");
   const maxVUs = envInt(
-    "LOAD_STATS_MAX_VUS",
+    "LOAD_RAMP_MAX_VUS",
     Math.max(botCount, peak, 100),
   );
   const preAllocatedVUs = envInt(
-    "LOAD_STATS_PREALLOCATED_VUS",
+    "LOAD_RAMP_PREALLOCATED_VUS",
     Math.min(20, maxVUs),
   );
 
   return {
     scenarios: {
-      stats_light: {
+      [scenarioName]: {
         executor: "ramping-arrival-rate",
         startRate: start,
         timeUnit: "1s",

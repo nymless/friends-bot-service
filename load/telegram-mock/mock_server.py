@@ -112,12 +112,10 @@ def _handle_method(method: str, token: str, body: bytes) -> bytes:
     if method in {"setWebhook", "deleteWebhook", "close", "logOut"}:
         return _ok(True)
 
-    if method in {
-        "sendMessage",
-        "sendChatAction",
-        "editMessageText",
-        "answerCallbackQuery",
-    }:
+    if method in {"sendChatAction", "answerCallbackQuery"}:
+        return _ok(True)
+
+    if method in {"sendMessage", "editMessageText"}:
         return _ok(
             {
                 "message_id": 1,

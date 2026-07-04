@@ -16,7 +16,7 @@
 | **AB-2** | polling | lock (main) vs DB **claim** (workers): стоимость claim на happy-path + страховка contention | `NGINX_ENABLED=0`, `BOT_MODE=polling` |
 
 **AB-1 — webhook:** все три профиля — `/stats`, happy-path `/run`, contention.
-**AB-2 — polling:** те же три профиля (`load-k6-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`). Для AB-2 особенно смотреть happy-path `/run` (claim добавляет обращения в БД на каждый draw) и contention (на всякий случай — гонка на одном чате). Ни один профиль не заменяет другие.
+**AB-2 — polling:** те же профили (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
 
 Не смешивать AB-1 и AB-2 в одном прогоне (разный `BOT_MODE`).
 
@@ -58,21 +58,31 @@ Prometheus хранит историю на диске — для «чистог
 
 k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefile`).
 
-### Лёгкий ingress (`/stats`)
+### Ramp (`LOAD_K6_COMMAND`)
 
-| Режим | `.env.load` | Команда |
-| ----- | ----------- | ------- |
-| webhook | `NGINX_ENABLED=1`, `BOT_MODE=webhook`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6` |
-| polling | `NGINX_ENABLED=0`, `BOT_MODE=polling`, `LOAD_SEED_DRAW_ENTRANTS=false` | `make load-k6-polling` |
+Один сценарий для `/stats`, `/run`, `/loser`. Команда и ramp-параметры — в `.env.k6` (`LOAD_K6_COMMAND`, `LOAD_RAMP_*`).
 
-**k6:** ramp до `LOAD_STATS_RPS_PEAK` (см. `.env.k6`: `LOAD_STATS_STAGE_*`, опционально `LOAD_STATS_RPS_START`/`END` = peak÷5).
-**Ожидание:** `http_req_failed < 1%`; рост `friends_bot_handler_invocations_total{command="/stats"}`.
+| Команда | `.env.load` | `.env.k6` |
+| ------- | ----------- | --------- |
+| `/stats` | `LOAD_SEED_DRAW_ENTRANTS=false` | `LOAD_K6_COMMAND=/stats` |
+| `/run`, `/loser` | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT>=2` | `LOAD_K6_COMMAND=/run` или `/loser` |
+
+Для draw: боты крутятся (`__VU % botCount`); успешные draw нужны `LOAD_BOT_COUNT >= RPS × длительность плато`.
+
+| Режим | Команда |
+| ----- | ------- |
+| webhook | `make load-k6-ramp` |
+| polling | `make load-k6-ramp-polling` |
+
+**k6:** ramp до `LOAD_RAMP_RPS_PEAK`.
+**Ожидание k6:** `http_req_failed < 1%`.
+**Grafana:** окно до падения rate в ноль; handler — по `LOAD_K6_COMMAND`.
 
 ### Happy-path draw (`/run`)
 
 | Режим | `.env.load` | Команда |
 | ----- | ----------- | ------- |
-| webhook | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT=2`, `LOAD_DRAW_COMMAND=/run` | `make load-k6-run` |
+| webhook | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT=2`, `LOAD_K6_COMMAND=/run` | `make load-k6-run` |
 | polling | то же + polling | `make load-k6-run-polling` |
 
 **k6:** `LOAD_RUN_HAPPY_VUS` (default `LOAD_BOT_COUNT`) × 1 итерация — один `/run` на бота.
@@ -121,8 +131,8 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 ### Фаза 1 — baseline (`main` / `feature/load-test`)
 
 1. Зафиксировать коммит/тег ветки в таблице результатов.
-2. Для **AB-1:** webhook-конфиг, прогнать сценарии (`load-k6`, `load-k6-run`, …).
-3. Для **AB-2:** polling-конфиг, прогнать сценарии (`load-k6-polling`, `load-k6-run-polling`, **`load-k6-run-contention-polling`**).
+2. Для **AB-1:** webhook-конфиг, прогнать сценарии (`load-k6-ramp`, `load-k6-run`, …).
+3. Для **AB-2:** polling-конфиг, прогнать сценарии (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
 4. На каждый прогон: `load-down-v load-up` → wait → `load-seed load-restart` → прогрев → T0/T1 → метрики.
 
 ### Фаза 2 — `feature/workers`

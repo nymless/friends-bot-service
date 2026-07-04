@@ -1,5 +1,5 @@
 .PHONY: help install install_prod run run_api docker-build load-build load-up load-down load-down-v load-logs \
-		load-seed load-restart load-k6 load-k6-polling load-k6-run load-k6-run-polling \
+		load-seed load-restart load-k6-ramp load-k6-ramp-polling load-k6-run load-k6-run-polling \
 		load-k6-run-contention load-k6-run-contention-polling monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
 		test type lint format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
 
@@ -92,11 +92,11 @@ load-seed: ## Seed bots from .env.load (run after load-up, when Postgres is read
 load-restart: ## Reload app in-memory bot list after seed
 	$(LOAD_COMPOSE) restart vps-sim
 
-load-k6: ## Run k6 webhook /stats (BOT_MODE=webhook)
-	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_stats.js
+load-k6-ramp: ## Run k6 webhook ramp (LOAD_K6_COMMAND=/stats|/run|/loser)
+	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_ramp.js
 
-load-k6-polling: ## Run k6 polling /stats (BOT_MODE=polling; reads .env.k6, no stack reload)
-	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_stats.js
+load-k6-ramp-polling: ## Run k6 polling ramp (LOAD_K6_COMMAND=/stats|/run|/loser)
+	$(K6_DOCKER) run -e LOAD_TELEGRAM_MOCK_URL=http://telegram-mock:8081 /scripts/polling_ramp.js
 
 load-k6-run: ## Run k6 webhook happy-path /run (LOAD_SEED_DRAW_ENTRANTS=true)
 	$(K6_DOCKER) run -e LOAD_BASE_URL=http://vps-sim:80 /scripts/webhook_run.js
