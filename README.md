@@ -97,8 +97,11 @@ Notes:
 - `WORKER_COUNT` — number of uvicorn workers in webhook mode (default `1`). Each
   worker is a separate process with its own SQLAlchemy pool; see
   [Database connection budget](#database-connection-budget). With `WORKER_COUNT > 1`,
-  `/metrics` aggregates counters and histograms from all workers via
-  `prometheus_client` multiprocess mode (mmap files in `.prometheus_multiproc/`).
+  metrics on `METRICS_BIND_PORT` aggregate all workers via `prometheus_client`
+  multiprocess mode (mmap files in `.prometheus_multiproc/`).
+- `METRICS_BIND_HOST` / `METRICS_BIND_PORT` — dedicated Prometheus scrape endpoint
+  (default `127.0.0.1:8001`) in both polling and webhook modes; see
+  [ADR 0005](docs/adr/0005-unified-metrics-http-export.md).
 - `MASTER_TOKEN` is the token of the private control bot.
 - `WEBHOOK_BASE_URL` is required in webhook mode and should point to the public base URL of the service.
 - `WEBHOOK_SECRET_TOKEN` is required in webhook mode and is used to verify that webhook requests really come from Telegram.
@@ -138,13 +141,10 @@ make run
 `make run` starts the service according to `BOT_MODE`:
 
 - `polling` — long polling for the master bot and all connected draw bots
-- `webhook` — FastAPI app for draw-bot and master-bot updates; `WORKER_COUNT` sets the number of uvicorn workers
-
-The repository also includes a direct FastAPI entry point (webhook mode only):
-
-```bash
-make run_api
-```
+- `webhook` — FastAPI app for draw-bot and master-bot updates; `WORKER_COUNT` sets
+  the number of uvicorn workers. The ASGI app is exported from
+  [`friends_bot_service/asgi.py`](friends_bot_service/asgi.py) so each worker can
+  load it; always start via `make run` (not by importing `asgi` directly).
 
 Webhook mode usually requires additional server setup outside this repository,
 such as a public HTTPS endpoint, TLS/SSL, and often a reverse proxy like Nginx.
@@ -204,12 +204,14 @@ make pre-commit  # run pre-commit on all files
 
 ## Observability
 
-Prometheus metrics (see [ADR 0004](docs/adr/0004-production-observability.md)):
+Prometheus metrics (see [ADR 0004](docs/adr/0004-production-observability.md) for
+what to measure and [ADR 0005](docs/adr/0005-unified-metrics-http-export.md) for
+how they are exported):
 
-- **Webhook mode:** `GET /metrics` on the webhook port (`WEBHOOK_BIND_PORT`, default `8000`).
-  With `WORKER_COUNT > 1`, counters and histograms are aggregated across workers via
-  `prometheus_client` multiprocess mode.
-- **Polling mode:** dedicated metrics server on `METRICS_BIND_PORT` (default `8001`).
+- **Both modes:** `GET /metrics` on `METRICS_BIND_HOST`:`METRICS_BIND_PORT`
+  (default `127.0.0.1:8001`), separate from the webhook HTTP port.
+- **Webhook with `WORKER_COUNT > 1`:** one metrics endpoint aggregates all uvicorn
+  workers via `prometheus_client` multiprocess mode.
 
 Key series:
 
@@ -219,18 +221,17 @@ Key series:
 - `friends_bot_db_errors_total` — database unavailable events
 
 Local Prometheus and Grafana scrape `host.docker.internal` while the app runs on
-the host. Set `METRICS_PORT` to the scrape target port (`8000` for webhook,
-`8001` for polling):
+the host (`make monitoring-up`, default `METRICS_PORT=8001`):
 
 ```bash
-make monitoring-up              # polling default (METRICS_PORT=8001)
-make monitoring-up METRICS_PORT=8000   # webhook /metrics on app port
+make monitoring-up
 ```
 
 Open Grafana at <http://localhost:3000> (default login `admin` / `admin`), add panels
 for the metrics above, or import a dashboard later.
 
 Handler metrics apply in both modes; webhook HTTP metrics only in webhook mode.
+Metrics are not exposed on the public webhook URL or through nginx.
 
 ## Database connection budget
 

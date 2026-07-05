@@ -88,7 +88,7 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 # ≈ 0
 ```
 
-Дополнительно: `process_resident_memory_bytes` (резидентная память процесса), `rate(process_cpu_seconds_total[1m])` (загрузка центрального процессора). Порт scrape: **8000** для webhook (`/metrics` на приложении), **8001** для polling (отдельный metrics server).
+Дополнительно: `process_resident_memory_bytes` (резидентная память процесса), `rate(process_cpu_seconds_total[1m])` (загрузка центрального процессора) на `METRICS_BIND_PORT` (по умолчанию **8001**) в обоих режимах — см. [ADR 0005](adr/0005-unified-metrics-http-export.md).
 
 ### Contention draw (один bot/chat)
 
@@ -159,8 +159,7 @@ load-инфраструктуры. Одинаковый `.env.load` + `.env.k6`,
 ## Быстрая диагностика
 
 ```bash
-curl -s http://127.0.0.1:8000/metrics | findstr /i "draw_ process_"   # webhook
-curl -s http://127.0.0.1:8001/metrics | findstr /i "draw_ process_"   # polling
+curl -s http://127.0.0.1:8001/metrics | findstr /i "draw_ process_"
 docker stats friends-bot-service-vps-sim-1 --no-stream
 make load-logs
 ```

@@ -1,4 +1,4 @@
-.PHONY: help install install_prod run run_api docker-build load-build load-up load-down load-down-v load-logs \
+.PHONY: help install install_prod run docker-build load-build load-up load-down load-down-v load-logs \
 		load-seed load-restart load-k6-ramp load-k6-ramp-polling load-k6-run load-k6-run-polling \
 		load-k6-run-contention load-k6-run-contention-polling monitoring-up monitoring-up-load monitoring-down deactivate_inactive_bots \
 		test type lint format check clean hooks pre-commit db-init db-migrate db-upgrade db-downgrade db-history count
@@ -148,9 +148,6 @@ WORKERS ?= 1
 
 run: ## Start the service using BOT_MODE (override: HOST=0.0.0.0 PORT=80 WORKERS=2)
 	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) METRICS_BIND_HOST=$(HOST) METRICS_BIND_PORT=$(METRICS_PORT) WORKER_COUNT=$(WORKERS) uv run python -m friends_bot_service.main
-
-run_api: ## Start the FastAPI app directly (override: PORT=80)
-	WEBHOOK_BIND_HOST=$(HOST) WEBHOOK_BIND_PORT=$(PORT) uv run python -m friends_bot_service.main_api
 
 deactivate_inactive_bots: ## Deactivate bots inactive for 60 days
 	uv run python -m friends_bot_service.infra.scripts.deactivate_inactive_bots

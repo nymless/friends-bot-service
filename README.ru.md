@@ -96,9 +96,12 @@ LOG_INBOUND_COMMANDS=false
 
 - `WORKER_COUNT` — число uvicorn workers в webhook-режиме (по умолчанию `1`). У
   каждого worker свой пул SQLAlchemy; см.
-  [Бюджет соединений с БД](#бюджет-соединений-с-бд). При `WORKER_COUNT > 1` endpoint
-  `/metrics` агрегирует счётчики и гистограммы всех workers через multiprocess-режим
+  [Бюджет соединений с БД](#бюджет-соединений-с-бд). При `WORKER_COUNT > 1` метрики
+  на `METRICS_BIND_PORT` агрегируют всех workers через multiprocess-режим
   `prometheus_client` (mmap-файлы в `.prometheus_multiproc/`).
+- `METRICS_BIND_HOST` / `METRICS_BIND_PORT` — отдельный endpoint Prometheus
+  (по умолчанию `127.0.0.1:8001`) в обоих режимах; см.
+  [ADR 0005](docs/adr/0005-unified-metrics-http-export.md).
 - `MASTER_TOKEN` — токен приватного управляющего бота.
 - `WEBHOOK_BASE_URL` обязателен в режиме webhook и должен указывать на публичный базовый URL сервиса.
 - `WEBHOOK_SECRET_TOKEN` обязателен в режиме webhook и используется для проверки, что запросы действительно приходят от Telegram.
@@ -138,13 +141,10 @@ make run
 `make run` запускает сервис в соответствии со значением `BOT_MODE`:
 
 - `polling` — long polling для мастер-бота и всех подключённых игровых ботов
-- `webhook` — FastAPI-приложение для апдейтов игровых ботов и мастер-бота; `WORKER_COUNT` задаёт число uvicorn workers
-
-В репозитории также есть прямой FastAPI entry point (только webhook-режим):
-
-```bash
-make run_api
-```
+- `webhook` — FastAPI-приложение для апдейтов игровых ботов и мастер-бота;
+  `WORKER_COUNT` задаёт число uvicorn workers. ASGI-приложение экспортируется из
+  [`friends_bot_service/asgi.py`](friends_bot_service/asgi.py), чтобы каждый worker
+  мог его загрузить; запускайте только через `make run`.
 
 Режим webhook обычно требует дополнительной серверной настройки вне этого
 репозитория: публичного HTTPS endpoint, TLS/SSL и часто reverse proxy вроде
@@ -204,12 +204,13 @@ make pre-commit  # прогнать pre-commit по всем файлам
 
 ## Наблюдаемость
 
-Метрики Prometheus (см. [ADR 0004](docs/adr/0004-production-observability.md)):
+Метрики Prometheus (что измерять — [ADR 0004](docs/adr/0004-production-observability.md),
+как отдавать по HTTP — [ADR 0005](docs/adr/0005-unified-metrics-http-export.md)):
 
-- **Webhook:** `GET /metrics` на порту вебхука (`WEBHOOK_BIND_PORT`, по умолчанию `8000`).
-  При `WORKER_COUNT > 1` счётчики и гистограммы агрегируются между workers через
-  multiprocess-режим `prometheus_client`.
-- **Polling:** отдельный сервер метрик на `METRICS_BIND_PORT` (по умолчанию `8001`).
+- **Оба режима:** `GET /metrics` на `METRICS_BIND_HOST`:`METRICS_BIND_PORT`
+  (по умолчанию `127.0.0.1:8001`), отдельно от порта webhook.
+- **Webhook при `WORKER_COUNT > 1`:** один endpoint метрик агрегирует всех uvicorn
+  workers через multiprocess-режим `prometheus_client`.
 
 Основные серии:
 
@@ -218,18 +219,17 @@ make pre-commit  # прогнать pre-commit по всем файлам
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — исходы розыгрыша
 - `friends_bot_db_errors_total` — недоступность базы
 
-Локально Prometheus и Grafana собирают метрики с `host.docker.internal`, пока
-приложение на хосте. Задайте `METRICS_PORT` как порт scrape (`8000` для webhook,
-`8001` для polling):
+Локально Prometheus и Grafana собирают метрики с `host.docker.internal`
+(`make monitoring-up`, по умолчанию `METRICS_PORT=8001`):
 
 ```bash
-make monitoring-up              # polling по умолчанию (METRICS_PORT=8001)
-make monitoring-up METRICS_PORT=8000   # webhook /metrics на порту приложения
+make monitoring-up
 ```
 
 Grafana: <http://localhost:3000> (логин по умолчанию `admin` / `admin`).
 
 Метрики обработчиков (handler) есть в обоих режимах; HTTP-метрики вебхука — только в webhook.
+Метрики не отдаются через публичный URL вебхука и nginx.
 
 ## Бюджет соединений с БД
 

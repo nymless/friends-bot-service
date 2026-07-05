@@ -14,14 +14,15 @@ production. Building load-test-only instrumentation would duplicate effort and
 produce incomparable numbers.
 
 ADR 0002 (multi-worker webhook) adds `prometheus_client` multiprocess aggregation
-when `WORKER_COUNT > 1`. Polling mode keeps a dedicated metrics server on
-`METRICS_BIND_PORT`.
+when `WORKER_COUNT > 1`. HTTP export shape is defined in **ADR 0005** (dedicated
+`METRICS_BIND_PORT` in both modes).
 
 ## Decision
 
-Add **Prometheus-style application metrics** exposed from the service via `GET /metrics`
-(`prometheus_client` in-process). Implementation lives in a dedicated
-`infra/observability` package with thin hooks in bootstrap code.
+Add **Prometheus-style application metrics** scraped at
+`http://<METRICS_BIND_HOST>:<METRICS_BIND_PORT>/metrics` (`prometheus_client`
+in-process). Implementation lives in a dedicated `infra/observability` package
+with thin hooks in bootstrap code. See **ADR 0005** for the unified export path.
 
 **Prometheus and Grafana are not deployed on the production virtual private server (VPS).** They run
 **locally** (`docker-compose.monitoring.yml`) when needed — load tests (ADR 0003),
@@ -73,20 +74,19 @@ HTTP 200 alone.
 
 | Location | Responsibility |
 | -------- | -------------- |
-| `infra/observability/` | Metric definitions, `setup_observability()`, Prometheus registry |
-| FastAPI app | HTTP middleware or route wrapper; mount `GET /metrics` |
+| `infra/observability/` | Metric definitions, `start_metrics_server()`, Prometheus registry |
+| FastAPI app | Webhook HTTP middleware only (no `/metrics` route; see ADR 0005) |
 | aiogram dispatcher | Middleware: resolve command name, time `feed_update` / handler chain |
 | Draw handlers / use cases | Increment draw outcome counters at business result boundaries |
-| `infra/bootstrap/runtime.py` | Call `setup_observability(app)` once in webhook lifespan (one line) |
+| `main.py` / `run_polling()` | Start dedicated metrics HTTP server on `METRICS_BIND_*` |
 
-Polling mode: handler middleware still applies; `/metrics` exists only when the
-FastAPI webhook app runs (`make run` webhook or `make run_api`).
+Polling and webhook both expose metrics on `METRICS_BIND_PORT` (ADR 0005).
 
 ### Runtime stack
 
 | Component | Where | Role |
 | --------- | ----- | ---- |
-| `prometheus_client` | App (VPS or local) | In-process metrics; `GET /metrics` on webhook app |
+| `prometheus_client` | App (VPS or local) | In-process metrics; scrape `METRICS_BIND_PORT` (ADR 0005) |
 | Prometheus | **Local** (compose) | Scrape `/metrics` on an interval; time-series database (TSDB) history; PromQL |
 | Grafana | **Local** (compose), optional | Dashboards; not required if PromQL suffices |
 
@@ -107,8 +107,9 @@ Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_
 
 | ADR | Relationship |
 | --- | -------------- |
-| 0002 | Worker count is an optional label after merge; observability ships first |
+| 0002 | Multi-worker aggregation at the single metrics endpoint |
 | 0003 | Prerequisite; load tests read the same metric names via local Prometheus |
+| 0005 | Unified HTTP export on `METRICS_BIND_PORT` |
 
 ### Branch and merge policy
 
@@ -128,9 +129,9 @@ Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_
 
 ## Deliverables
 
-- `friends_bot_service/infra/observability/` package — **done** on `feature/observability`
-- `GET /metrics` on webhook app — **done**
-- `docker-compose.monitoring.yml` for **local** Prometheus + Grafana — **done**
+- `friends_bot_service/infra/observability/` package — **done**
+- Dedicated metrics HTTP server on `METRICS_BIND_*` (ADR 0005) — **done**
+- `compose.monitoring.yml` for **local** Prometheus + Grafana — **done**
 - README section: metric names and local `make monitoring-up` — **done**
 - Example Grafana dashboard JSON — optional (Phase 2)
 - Prod VPS: app ships with `/metrics`; no Prometheus/Grafana co-located on the production server
