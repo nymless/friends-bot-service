@@ -3,6 +3,7 @@ from aiogram import Bot
 from friends_bot_service.infra.bootstrap.db import unit_of_work
 from friends_bot_service.infra.bot_manager.base import BotManager
 from friends_bot_service.infra.security import default_token_cipher
+from friends_bot_service.infra.telegram import create_bot
 
 
 class WebhookBotManager(BotManager):
@@ -30,7 +31,7 @@ class WebhookBotManager(BotManager):
     async def start_bot(self, token: str) -> Bot:
         """Registers webhook for a bot token."""
 
-        bot = Bot(token=token)
+        bot = create_bot(token)
         return await self.register_webhook(bot)
 
     async def stop_bot(self, bot_id: int, *, token: str | None = None) -> None:
@@ -40,7 +41,7 @@ class WebhookBotManager(BotManager):
             msg = f"token is required to stop webhook bot {bot_id}"
             raise ValueError(msg)
 
-        bot = Bot(token=token)
+        bot = create_bot(token)
         try:
             await bot.delete_webhook()
         finally:

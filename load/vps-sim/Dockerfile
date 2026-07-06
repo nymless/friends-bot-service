@@ -18,7 +18,8 @@ ENV PATH="/usr/local/bin:/app/.venv/bin:${PATH}"
 
 COPY load/vps-sim/nginx.conf /etc/nginx/conf.d/default.conf
 COPY load/vps-sim/entrypoint.sh /usr/local/bin/vps-sim-entrypoint.sh
-RUN chmod +x /usr/local/bin/vps-sim-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/vps-sim-entrypoint.sh \
+    && chmod +x /usr/local/bin/vps-sim-entrypoint.sh
 
 ENV NGINX_ENABLED=0 \
     PYTHONUNBUFFERED=1 \

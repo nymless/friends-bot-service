@@ -1,7 +1,6 @@
 import logging
 import secrets
 
-from aiogram import Bot
 from aiogram.types import Update
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
@@ -12,6 +11,7 @@ from friends_bot_service.infra.api.app_state import (
 )
 from friends_bot_service.infra.bootstrap.db import unit_of_work
 from friends_bot_service.infra.security import default_token_cipher
+from friends_bot_service.infra.telegram import create_bot
 
 _logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,7 +47,7 @@ async def _feed_draw_bot_update(
     registered_bot: RegisteredBot,
     update: Update,
 ) -> None:
-    bot = Bot(token=_token_cipher.decrypt(registered_bot.encrypted_token))
+    bot = create_bot(_token_cipher.decrypt(registered_bot.encrypted_token))
     try:
         await state.dp.feed_update(bot, update)
     except Exception:

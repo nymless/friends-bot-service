@@ -74,9 +74,9 @@ async def seed_bots(
             is_active = true
         """
     )
-    insert_player = text(
+    insert_draw_entrant = text(
         """
-        INSERT INTO players (
+        INSERT INTO draw_entrants (
             bot_id, chat_id, user_id, username, full_name, is_active
         )
         VALUES (
@@ -112,7 +112,7 @@ async def seed_bots(
                         players_per_chat=players_per_chat,
                     )
                     await conn.execute(
-                        insert_player,
+                        insert_draw_entrant,
                         {
                             "bot_id": bot_id,
                             "chat_id": chat_id,

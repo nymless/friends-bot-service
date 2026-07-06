@@ -16,7 +16,7 @@ async def test_start_bot_sets_webhook_with_secret_token():
     manager = WebhookBotManager("https://example.com", "secret-token")
 
     with patch(
-        "friends_bot_service.infra.bot_manager.webhook.Bot",
+        "friends_bot_service.infra.bot_manager.webhook.create_bot",
         return_value=fake_bot,
     ):
         bot = await manager.start_bot("321:token")
@@ -56,7 +56,7 @@ async def test_stop_bot_deletes_webhook_and_closes_session():
     manager = WebhookBotManager("https://example.com", "secret-token")
 
     with patch(
-        "friends_bot_service.infra.bot_manager.webhook.Bot",
+        "friends_bot_service.infra.bot_manager.webhook.create_bot",
         return_value=fake_bot,
     ):
         await manager.stop_bot(321, token="321:token")

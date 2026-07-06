@@ -31,6 +31,8 @@ from friends_bot_service.infra.telegram.bot_factory import create_bot
 
 _logger = logging.getLogger(__name__)
 
+_logging_configured = False
+
 _load_active_bots = LoadActiveBots(default_token_cipher())
 
 
@@ -62,7 +64,16 @@ def log_worker_cpu_budget(logger: logging.Logger) -> None:
 
 
 def setup_logging() -> None:
-    """Configures application logging."""
+    """Configures application logging.
+
+    The root logger and its console handler are created only on the first
+    call (for example from ``main.py`` and again when ``asgi`` is imported).
+    Later calls return immediately without adding another handler.
+    """
+
+    global _logging_configured
+    if _logging_configured:
+        return
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -73,6 +84,7 @@ def setup_logging() -> None:
     console_handler.setFormatter(formatter)
     console_handler.addFilter(PackagePathFilter())
     root_logger.addHandler(console_handler)
+    _logging_configured = True
 
 
 def create_master_runtime_components() -> tuple[Dispatcher, Bot]:
