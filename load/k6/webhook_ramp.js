@@ -6,7 +6,7 @@ import {
   rampOptions,
   requiredEnv,
 } from "./env_common.js";
-import { buildRampMessageUpdate, loadRampConfig, pickRampBotId } from "./ramp_common.js";
+import { buildRampMessageUpdate, loadRampConfig, pickRampSlot } from "./ramp_common.js";
 
 const config = loadRampConfig();
 const baseUrl = requiredEnv("LOAD_BASE_URL");
@@ -23,11 +23,11 @@ export function teardown(data) {
 }
 
 export default function () {
-  const botId = pickRampBotId(config, __VU);
+  const { botId, chatSlot } = pickRampSlot(config, __VU, __ITER);
   const updateId = __ITER + botId * 1_000_000;
 
   const payload = JSON.stringify(
-    buildRampMessageUpdate(updateId, botId, config),
+    buildRampMessageUpdate(updateId, botId, config, chatSlot),
   );
 
   const response = http.post(`${baseUrl}/webhook/${botId}`, payload, {

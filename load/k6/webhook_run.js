@@ -2,6 +2,7 @@ import http from "k6/http";
 import { check } from "k6";
 import {
   buildMessageUpdate,
+  happyPathSlot,
   loadDrawConfig,
   loadTestSetup,
   loadTestTeardown,
@@ -24,10 +25,10 @@ export function teardown(data) {
 }
 
 export default function () {
-  const botId = config.botStart + (__VU - 1);
-  const updateId = botId * 1_000_000 + 1;
+  const { botId, chatSlot } = happyPathSlot(__VU, config);
+  const updateId = botId * 1_000_000 + chatSlot + 1;
 
-  const payload = JSON.stringify(buildMessageUpdate(updateId, botId, config));
+  const payload = JSON.stringify(buildMessageUpdate(updateId, botId, config, chatSlot));
 
   const response = http.post(`${baseUrl}/webhook/${botId}`, payload, {
     headers: {
