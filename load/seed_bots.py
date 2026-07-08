@@ -38,6 +38,29 @@ def _require_env_bool(name: str) -> bool:
     sys.exit(1)
 
 
+def _optional_env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"error: {name} must be an integer, got: {value!r}", file=sys.stderr)
+        sys.exit(1)
+
+
+def chat_id_for_bot(
+    *,
+    chat_id_base: int,
+    bot_offset: int,
+    chats_per_bot: int,
+    chat_slot: int,
+) -> int:
+    """Maps a load-test bot to a Telegram chat id (default slot 0 = legacy layout)."""
+
+    return chat_id_base + bot_offset * chats_per_bot + chat_slot
+
+
 def _build_token(bot_id: int) -> str:
     return f"{bot_id}:AAloadtestfake"
 
@@ -59,6 +82,7 @@ async def seed_bots(
     owner_id: int,
     with_draw_entrants: bool,
     players_per_chat: int,
+    chats_per_bot: int,
     chat_id_base: int,
     user_id_base: int,
 ) -> None:
@@ -103,30 +127,37 @@ async def seed_bots(
                 },
             )
             if with_draw_entrants:
-                chat_id = chat_id_base + offset
-                for player_index in range(players_per_chat):
-                    user_id = entrant_user_id(
-                        user_id_base=user_id_base,
+                for chat_slot in range(chats_per_bot):
+                    chat_id = chat_id_for_bot(
+                        chat_id_base=chat_id_base,
                         bot_offset=offset,
-                        player_index=player_index,
-                        players_per_chat=players_per_chat,
+                        chats_per_bot=chats_per_bot,
+                        chat_slot=chat_slot,
                     )
-                    await conn.execute(
-                        insert_draw_entrant,
-                        {
-                            "bot_id": bot_id,
-                            "chat_id": chat_id,
-                            "user_id": user_id,
-                            "username": f"player_{user_id}",
-                            "full_name": f"Load Player {user_id}",
-                        },
-                    )
+                    for player_index in range(players_per_chat):
+                        user_id = entrant_user_id(
+                            user_id_base=user_id_base,
+                            bot_offset=offset,
+                            player_index=player_index,
+                            players_per_chat=players_per_chat,
+                        )
+                        await conn.execute(
+                            insert_draw_entrant,
+                            {
+                                "bot_id": bot_id,
+                                "chat_id": chat_id,
+                                "user_id": user_id,
+                                "username": f"player_{user_id}",
+                                "full_name": f"Load Player {user_id}",
+                            },
+                        )
 
     await engine.dispose()
     players = players_per_chat if with_draw_entrants else 0
     print(
         f"seeded bots={count} start_id={start_id} "
-        f"draw_entrants={with_draw_entrants} players_per_chat={players}"
+        f"draw_entrants={with_draw_entrants} players_per_chat={players} "
+        f"chats_per_bot={chats_per_bot}"
     )
 
 
@@ -149,6 +180,11 @@ def main() -> None:
         )
         sys.exit(1)
 
+    chats_per_bot = _optional_env_int("LOAD_CHATS_PER_BOT", 1)
+    if chats_per_bot < 1:
+        print("error: LOAD_CHATS_PER_BOT must be >= 1", file=sys.stderr)
+        sys.exit(1)
+
     asyncio.run(
         seed_bots(
             count=count,
@@ -156,6 +192,7 @@ def main() -> None:
             owner_id=owner_id,
             with_draw_entrants=with_draw_entrants,
             players_per_chat=players_per_chat,
+            chats_per_bot=chats_per_bot,
             chat_id_base=chat_id_base,
             user_id_base=user_id_base,
         )

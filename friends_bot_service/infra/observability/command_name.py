@@ -1,5 +1,7 @@
 def command_name_from_message_text(text: str | None) -> str:
-    """Returns a low-cardinality slash-command label for metrics."""
+    """Return the slash-command, stripping the variable @bot mention
+    in chat to reduce cardinality (low-cardinality).
+    """
 
     if text is None or not text.startswith("/"):
         return "non_command"

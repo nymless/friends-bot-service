@@ -53,6 +53,10 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | `/stats` | `LOAD_SEED_DRAW_ENTRANTS=false` | `LOAD_K6_COMMAND=/stats` |
 | `/run`, `/loser` | `LOAD_SEED_DRAW_ENTRANTS=true`, `LOAD_PLAYERS_PER_CHAT>=2` | `LOAD_K6_COMMAND=/run` или `/loser` |
 
+Для sustained ramp `/run` без тысяч ботов: `LOAD_CHATS_PER_BOT>1` (seed + k6; по умолчанию `1` — как раньше, один чат на бота). Contention по-прежнему бьёт в первый чат бота (`chat_slot=0`).
+
+Чтобы ramp давал **не больше одного draw на (бот, чат) за UTC-день** (пока запросов ≤ `LOAD_BOT_COUNT × LOAD_CHATS_PER_BOT`): `LOAD_RAMP_BOT_PICK=round_robin` в `.env.k6` (глобальный обход слотов через `iterationInTest`; режимы `vu` / `random` могут повторять пары → `already_played`).
+
 Для draw: боты крутятся по формуле виртуального пользователя k6 (`__VU % botCount`); для успешных розыгрышей нужны `LOAD_BOT_COUNT >= RPS × длительность плато`, где RPS — запросов в секунду.
 
 | Режим | Команда |

@@ -1,39 +1,66 @@
-import { optionalEnv, requiredEnv } from "./env_common.js";
+import exec from "k6/execution";
+
+import { optionalEnv } from "./env_common.js";
 import {
   botOffset,
   buildMessageUpdate,
   chatIdForBot,
+  chatSlotForIteration,
+  invokerUserId,
+  loadDrawConfig,
+  slotFromIndex,
 } from "./draw_common.js";
 
 export function loadRampConfig() {
+  return loadDrawConfig();
+}
+
+/**
+ * Ramp target selection.
+ * - vu (default): sticky bot per VU, chat rotates per iteration
+ * - random: random bot, chat rotates per iteration
+ * - round_robin: global (bot, chat) from iterationInTest — one draw per slot per UTC day
+ */
+export function pickRampSlot(config, vu, iteration) {
+  const pick = optionalEnv("LOAD_RAMP_BOT_PICK", "vu").toLowerCase();
+  if (pick === "round_robin") {
+    return slotFromIndex(exec.scenario.iterationInTest, config);
+  }
+  if (pick === "random") {
+    return {
+      botId: config.botStart + Math.floor(Math.random() * config.botCount),
+      chatSlot: chatSlotForIteration(iteration, config.chatsPerBot),
+    };
+  }
   return {
-    botStart: Number(requiredEnv("LOAD_BOT_ID_START")),
-    botCount: Number(requiredEnv("LOAD_BOT_COUNT")),
-    chatIdBase: Number(requiredEnv("LOAD_CHAT_ID_BASE")),
-    userIdBase: Number(requiredEnv("LOAD_USER_ID_BASE")),
-    playersPerChat: Number(requiredEnv("LOAD_PLAYERS_PER_CHAT")),
-    command: requiredEnv("LOAD_K6_COMMAND"),
+    botId: config.botStart + (vu % config.botCount),
+    chatSlot: chatSlotForIteration(iteration, config.chatsPerBot),
   };
 }
 
-/** Default vu: sticky bot per VU (__VU % botCount). Set LOAD_RAMP_BOT_PICK=random to shuffle. */
+/** @deprecated Use pickRampSlot; kept for callers that only need bot id. */
 export function pickRampBotId(config, vu) {
-  const pick = optionalEnv("LOAD_RAMP_BOT_PICK", "vu").toLowerCase();
-  if (pick === "random") {
-    return config.botStart + Math.floor(Math.random() * config.botCount);
-  }
-  return config.botStart + (vu % config.botCount);
+  return pickRampSlot(config, vu, 0).botId;
 }
 
-export function buildRampMessageUpdate(updateId, botId, config) {
+export function buildRampMessageUpdate(updateId, botId, config, chatSlot) {
+  const offset = botOffset(botId, config.botStart);
+
   if (config.command === "/stats") {
-    const offset = botOffset(botId, config.botStart);
     return {
       update_id: updateId,
       message: {
         message_id: updateId,
         date: Math.floor(Date.now() / 1000),
-        chat: { id: chatIdForBot(offset, config.chatIdBase), type: "group" },
+        chat: {
+          id: chatIdForBot(
+            offset,
+            config.chatIdBase,
+            config.chatsPerBot,
+            chatSlot,
+          ),
+          type: "group",
+        },
         from: {
           id: config.userIdBase + offset,
           is_bot: false,
@@ -43,5 +70,5 @@ export function buildRampMessageUpdate(updateId, botId, config) {
       },
     };
   }
-  return buildMessageUpdate(updateId, botId, config);
+  return buildMessageUpdate(updateId, botId, config, chatSlot);
 }
