@@ -64,7 +64,7 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 | webhook | `make load-k6-ramp` |
 | polling | `make load-k6-ramp-polling` |
 
-**k6:** ramp до `LOAD_RAMP_RPS_PEAK` (пик запросов в секунду).
+**k6:** ramp до `LOAD_RAMP_RPS_PEAK` (пик запросов в секунду). `update_id` в ramp: `iterationInTest + botId×1e6 + chatSlot` (уникален на запрос; старые прогоны с `__ITER + botId` для `/run` перегонять).
 **Ожидание k6:** `http_req_failed < 1%`.
 **Grafana:** окно до падения скорости (rate) в ноль; обработчик (handler) — по `LOAD_K6_COMMAND`.
 
@@ -93,6 +93,14 @@ increase(friends_bot_draw_rejected_total{reason="already_played"}[$__range])
 ```
 
 Дополнительно: `process_resident_memory_bytes` (резидентная память процесса), `rate(process_cpu_seconds_total[1m])` (загрузка центрального процессора) на `METRICS_BIND_PORT` (по умолчанию **8001**) в обоих режимах — см. [ADR 0005](adr/0005-unified-metrics-http-export.md).
+
+Латентность `/run` и `/loser` (suspense ~10.5 s) — отдельная гистограмма с плотными бакетами:
+
+```promql
+histogram_quantile(0.5, sum(rate(friends_bot_draw_handler_duration_seconds_bucket{command="/run"}[$__rate_interval])) by (le))
+```
+
+`/stats` и прочие команды — `friends_bot_handler_duration_seconds` (старая сетка бакетов).
 
 ### Contention draw (один bot/chat)
 

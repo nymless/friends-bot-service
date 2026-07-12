@@ -215,7 +215,8 @@ make pre-commit  # прогнать pre-commit по всем файлам
 Основные серии:
 
 - `friends_bot_webhook_request_duration_seconds` — задержка HTTP по статусу
-- `friends_bot_handler_duration_seconds` — время обработчика (handler) по slash-команде
+- `friends_bot_handler_duration_seconds` — время обработчика (handler) по slash-команде (кроме `/run`, `/loser`)
+- `friends_bot_draw_handler_duration_seconds` — `/run` и `/loser` (плотные бакеты около ~10 с suspense)
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — исходы розыгрыша
 - `friends_bot_db_errors_total` — недоступность базы
 
