@@ -8,11 +8,14 @@ from friends_bot_service.infra.observability.command_name import (
     command_name_from_message_text,
 )
 from friends_bot_service.infra.observability.metrics import (
+    DRAW_HANDLER_DURATION_SECONDS,
     HANDLER_DURATION_SECONDS,
     HANDLER_INVOCATIONS_TOTAL,
 )
 
 Handler = Callable[[Any, dict[str, Any]], Awaitable[Any]]
+
+_DRAW_COMMANDS = frozenset({"/run", "/loser"})
 
 
 class HandlerMetricsMiddleware(BaseMiddleware):
@@ -46,7 +49,12 @@ class HandlerMetricsMiddleware(BaseMiddleware):
             return result
         finally:
             elapsed = time.perf_counter() - started
-            HANDLER_DURATION_SECONDS.labels(
+            duration = (
+                DRAW_HANDLER_DURATION_SECONDS
+                if command in _DRAW_COMMANDS
+                else HANDLER_DURATION_SECONDS
+            )
+            duration.labels(
                 command=command,
                 bot_mode=self._bot_mode,
             ).observe(elapsed)

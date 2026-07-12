@@ -207,7 +207,8 @@ Webhook mode exposes Prometheus metrics at `GET /metrics` (see architecture deci
 Key series:
 
 - `friends_bot_webhook_request_duration_seconds` — HTTP latency by status
-- `friends_bot_handler_duration_seconds` — request handler time by slash-command
+- `friends_bot_handler_duration_seconds` — request handler time by slash-command (except `/run`, `/loser`)
+- `friends_bot_draw_handler_duration_seconds` — `/run` and `/loser` handler time (dense buckets around ~10s suspense)
 - `friends_bot_draw_completed_total` / `friends_bot_draw_rejected_total` — draw outcomes
 - `friends_bot_db_errors_total` — database unavailable events
 

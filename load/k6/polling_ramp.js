@@ -6,7 +6,12 @@ import {
   rampOptions,
   requiredEnv,
 } from "./env_common.js";
-import { buildRampMessageUpdate, loadRampConfig, pickRampSlot } from "./ramp_common.js";
+import {
+  buildRampMessageUpdate,
+  loadRampConfig,
+  pickRampSlot,
+  rampUpdateId,
+} from "./ramp_common.js";
 
 const config = loadRampConfig();
 const mockUrl = requiredEnv("LOAD_TELEGRAM_MOCK_URL");
@@ -26,7 +31,7 @@ export function teardown(data) {
 
 export default function () {
   const { botId, chatSlot } = pickRampSlot(config, __VU, __ITER);
-  const updateId = __ITER + botId * 1_000_000;
+  const updateId = rampUpdateId(botId, chatSlot);
 
   const payload = JSON.stringify({
     bot_id: botId,

@@ -19,3 +19,4 @@ def test_metrics_server_exposes_prometheus_text():
 
     assert response.status == 200
     assert "friends_bot_handler_invocations_total" in body
+    assert "friends_bot_draw_handler_duration_seconds" in body

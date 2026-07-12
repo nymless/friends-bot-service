@@ -15,9 +15,16 @@ WEBHOOK_REQUESTS_TOTAL = Counter(
 
 HANDLER_DURATION_SECONDS = Histogram(
     "friends_bot_handler_duration_seconds",
-    "Aiogram handler execution duration",
+    "Aiogram handler execution duration (non-draw commands)",
     labelnames=("command", "bot_mode"),
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0),
+)
+
+DRAW_HANDLER_DURATION_SECONDS = Histogram(
+    "friends_bot_draw_handler_duration_seconds",
+    "Draw command handler duration (/run, /loser); buckets around ~10.5s",
+    labelnames=("command", "bot_mode"),
+    buckets=(7, 8, 9, 10, 11, 12, 13, 15, 18, 22, 30, 45, 60),
 )
 
 HANDLER_INVOCATIONS_TOTAL = Counter(

@@ -43,6 +43,11 @@ export function pickRampBotId(config, vu) {
   return pickRampSlot(config, vu, 0).botId;
 }
 
+/** Globally unique update_id per ramp iteration (includes chat_slot). */
+export function rampUpdateId(botId, chatSlot) {
+  return exec.scenario.iterationInTest + botId * 1_000_000 + chatSlot;
+}
+
 export function buildRampMessageUpdate(updateId, botId, config, chatSlot) {
   const offset = botOffset(botId, config.botStart);
 
