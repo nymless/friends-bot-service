@@ -28,6 +28,3 @@ wheels/
 
 # draw.io
 *.bkp
-
-# load test results
-docs/load-results.md

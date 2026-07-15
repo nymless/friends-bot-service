@@ -1,7 +1,8 @@
 # ADR 0004: Production observability (metrics and dashboards)
 
-- **Status:** Proposed
+- **Status:** Accepted (Phase 1)
 - **Date:** 2026-06-09
+- **Accepted:** 2026-07-15 (shipped on `main`; see also ADR 0005 for unified metrics export)
 
 ## Context
 
@@ -137,6 +138,6 @@ Document local scrape target and ports in README (`make monitoring-up`, `SCRAPE_
 
 ## When to revisit
 
-- Phase 1 merged to `main` → set ADR to **Accepted / Phase 1**.
-- ADR 0003 completed → add documented RPS (requests per second) / worker assumptions to README or this ADR.
+- ADR 0003 completed → keep load assumptions in [load-results.md](../load-results.md) / README in sync with production sizing.
 - Need per-request traces across DB and Telegram → new ADR or Phase 4 for OpenTelemetry.
+- Optional Phase 2+: richer Grafana dashboards / alerts if PromQL-only workflow is not enough.

@@ -57,7 +57,7 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 
 Чтобы ramp давал **не больше одного draw на (бот, чат) за UTC-день** (пока запросов ≤ `LOAD_BOT_COUNT × LOAD_CHATS_PER_BOT`): `LOAD_RAMP_BOT_PICK=round_robin` в `.env.k6` (глобальный обход слотов через `iterationInTest`; режимы `vu` / `random` могут повторять пары → `already_played`).
 
-Для draw: боты крутятся по формуле виртуального пользователя k6 (`__VU % botCount`); для успешных розыгрышей нужны `LOAD_BOT_COUNT >= RPS × длительность плато`, где RPS — запросов в секунду.
+Для sustained ramp `/run` с `round_robin` запас уникальных слотов = `LOAD_BOT_COUNT × LOAD_CHATS_PER_BOT` должен покрывать число запросов за прогон (не путать со старым правилом «ботов ≥ RPS × плато» при одном чате на бота).
 
 | Режим | Команда |
 | ----- | ------- |
@@ -68,12 +68,14 @@ k6 всегда в Docker, сеть `friends-bot-service_default` (см. `Makefi
 **Ожидание k6:** `http_req_failed < 1%`.
 **Grafana:** окно до падения скорости (rate) в ноль; обработчик (handler) — по `LOAD_K6_COMMAND`.
 
-### Happy-path draw (`/run`)
+### Happy-path draw (`/run`) — optional smoke
 
-**Happy-path** (досл. «счастливый путь») — сценарий без отклонений: один `/run` на бота в свой chat,
-розыгрыш завершается успешно (`draw_completed`), без отказов `already_played`. Противоположность
-**contention** (много параллельных `/run` в один chat). **Ramp** — отдельный профиль нагрузки по RPS,
-не обязан давать только happy-path.
+**Happy-path** — короткий сценарий без отклонений: один `/run` на бота в свой chat,
+`draw_completed`, без `already_played`. Противоположность **contention**.
+
+Для **AB-сравнения** основной профиль `/run` — **ramp + `LOAD_RAMP_BOT_PICK=round_robin`**
+(см. выше): при достаточном числе слотов даёт те же «чистые» розыгрыши плюс кривая по RPS.
+Отдельный happy-path (`make load-k6-run*`) — опциональный smoke после seed/деплоя, не обязателен в AB-чеклисте.
 
 | Режим | `.env.load` | Команда |
 | ----- | ----------- | ------- |
@@ -104,7 +106,7 @@ histogram_quantile(0.5, sum(rate(friends_bot_draw_handler_duration_seconds_bucke
 
 ### Contention draw (один bot/chat)
 
-Только на **свежей базе данных (БД)** (после happy-path в те же боты чат уже «сыгран»).
+Только на **свежей базе данных (БД)** (после ramp `/run` или happy-path в те же слоты чат уже «сыгран»).
 
 | Режим | Команда |
 | ----- | ------- |
@@ -138,35 +140,43 @@ load-инфраструктуры. Одинаковый `.env.load` + `.env.k6`,
 | AB | Режим | Вопрос | `.env.load` |
 | -- | ----- | ------ | ----------- |
 | **AB-1** | webhook | реестр ботов в памяти (registry) на `main` vs webhook с запросом в БД на каждый update (db-first ingress) + несколько процессов (`WORKER_COUNT`) | `NGINX_ENABLED=1`, `BOT_MODE=webhook` |
-| **AB-2** | polling | блокировка в памяти (lock) на `main` vs захват розыгрыша через БД (claim) на workers: стоимость claim на happy-path + страховка при конкуренции (contention) | `NGINX_ENABLED=0`, `BOT_MODE=polling` |
+| **AB-2** | polling | блокировка в памяти (lock) на `main` vs захват розыгрыша через БД (claim) на workers: стоимость claim на ramp `/run` + страховка при конкуренции (contention) | `NGINX_ENABLED=0`, `BOT_MODE=polling` |
 
-**AB-1 — webhook:** все три профиля — `/stats`, happy-path `/run`, contention.
-**AB-2 — polling:** те же профили (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
+**Обязательные профили (AB-1 и AB-2):**
+
+1. Ramp `/stats` — `make load-k6-ramp` / `load-k6-ramp-polling`
+2. Ramp `/run` с `LOAD_RAMP_BOT_PICK=round_robin` — тот же target; heavy-handler + claim/lock cost
+3. Contention `/run` — `make load-k6-run-contention*`
+
+**Опционально:** happy-path `make load-k6-run*` (smoke).
 
 Не смешивать AB-1 и AB-2 в одном прогоне (разный `BOT_MODE`).
 
+Типичная матрица железа: `VPS_SIM_CPUS` / память 1/2g, 4/8g, при необходимости 8/16g; `WORKER_COUNT` обычно равен числу ядер гостя на ветке воркеров.
+
 ### Фаза 1 — baseline (`main`)
 
-1. Зафиксировать коммит/тег в таблице результатов.
-2. Для **AB-1:** webhook-конфиг, прогнать сценарии (`load-k6-ramp`, `load-k6-run`, …).
-3. Для **AB-2:** polling-конфиг, прогнать сценарии (`load-k6-ramp-polling`, `load-k6-run-polling`, `load-k6-run-contention-polling`).
+1. Зафиксировать коммит/тег в [load-results.md](load-results.md).
+2. Для **AB-1:** webhook-конфиг, обязательные профили выше.
+3. Для **AB-2:** polling-конфиг, те же обязательные профили.
 4. На каждый прогон: `load-down-v load-up` → wait → `load-seed load-restart` → прогрев → T0/T1 → метрики.
 
 ### Фаза 2 — `feature/workers`
 
 1. Вмержить load stack, `make load-build`, затем clean run (`load-down-v load-up` → seed → restart).
-2. Повторить **те же** команды и сценарии для AB-1 (webhook) и AB-2 (polling).
-3. Сравнить строки в `docs/load-results.md` (или своей таблице) внутри одного AB и одного сценария.
+2. Повторить **те же** обязательные профили для AB-1 и AB-2.
+3. Сравнить внутри одного AB и одного сценария в [load-results.md](load-results.md).
 
 Общие правила:
 
-- Одинаковый `VPS_SIM_CPUS`, `VPS_SIM_MEMORY`, `LOAD_BOT_COUNT`, seed.
+- Одинаковый `VPS_SIM_CPUS`, `VPS_SIM_MEMORY`, `LOAD_BOT_COUNT`, seed-параметры.
 - Сравнивать **внутри одного сценария**, не смешивать `/stats` и `/run`.
-- Contention — только на свежей БД (до happy-path на тех же ботах).
+- Contention — только на свежей БД (до ramp `/run` / happy-path на тех же слотах).
+- Основной сигнал латентности — handler / draw-handler гистограммы приложения (не только HTTP 200 webhook).
 
 ## Куда писать результаты
 
-Отдельный файл: [load-results.md](load-results.md) — таблица прогонов (копируйте строку-пример).
+Отчёт: [load-results.md](load-results.md).
 
 ## Быстрая диагностика
 
